@@ -1,0 +1,17 @@
+{% from "_macros.html" import aiuto %}
+{% if user.is_admin %}{% include "_abbinamenti.html" %}{% endif %}
+{% if da_inviare %}
+<div class="dafare-card warn" role="status" data-chiave="dati-{{ da_inviare|join(',') }}" data-titolo="Dati da inviare">
+  <div class="dafare-riga">
+    <span class="dafare-punto"></span>
+    <div class="dafare-testo">
+      <b>{{ t("Dati da inviare") }}{% call aiuto() %}{{ t("Le modifiche valgono ai varchi solo dopo l'invio.") }}{% endcall %}</b>
+      <small>{{ da_inviare|join(', ') }}</small>
+    </div>
+  </div>
+  <form method="post" action="/varchi/scarica-dati">
+    <input type="hidden" name="redirect_to" value="{{ ritorno }}">
+    <button type="submit">{{ t("Invia ora") }}</button>
+  </form>
+</div>
+{% endif %}

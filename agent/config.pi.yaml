@@ -1,0 +1,31 @@
+# Slave reale su Raspberry Pi (Zero 2 W), SENZA lettore: comanda uscite e ingressi dal GPIO.
+# install.sh lo copia in /opt/limen-slave/config.yaml scrivendo il varco_id.
+# La chiave non va indicata: all'accensione lo slave si presenta al master e un admin preme
+# «Abbina» nella pagina Varchi della webapp.
+
+varco_id: 1
+
+# Nessun lettore per ora (verra' aggiunto piu' avanti: Wiegand o RS485).
+readers: []
+
+# Uscite a relè (numerazione BCM). Collega un MODULO RELE' con optoisolatore: i pin della Pi
+# non reggono la bobina. active_high: false se il modulo scatta col pin a livello BASSO
+# (molti moduli a 5 V lo fanno): se il relè scatta all'avvio o al contrario, cambia questo.
+relays:
+  - pin: 17               # uscita 1  (pin fisico 11)
+    active_high: true
+    open_duration_sec: 3
+  - pin: 18               # uscita 2  (pin fisico 12)
+    active_high: true
+
+# Ingressi: contatto tra il pin e massa (pull-up interno della Pi). Se NC o NO e a cosa serve
+# (sensore porta, pulsante, altro) lo decide il popup Funzionamento nella webapp.
+inputs:
+  - pin: 27               # ingresso 1  (pin fisico 13)
+  - pin: 22               # ingresso 2  (pin fisico 15)   `null` = non cablato
+
+udp:
+  heartbeat_interval_sec: 3
+
+# Chiave, cache credenziali e coda eventi: sopravvivono ai riavvii.
+state_dir: "/var/lib/limen-slave"

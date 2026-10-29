@@ -1,0 +1,18 @@
+# Limen master su un server Linux. Avvio: docker compose up -d --build
+# Rete "host": il master parla in UDP con gli ESP32 (porta 57990) con l'indirizzo vero del server, senza mappature.
+# Su Docker Desktop (Windows/Mac) la rete host non funziona: vedi docs/DEVELOPMENT.md.
+services:
+  limen:
+    build: .
+    image: limen:latest
+    container_name: limen
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      TIMEZONE: Europe/Rome      # fuso orario dei log e delle fasce
+      PORTA: "8443"              # porta HTTPS
+    volumes:
+      - limen-data:/data    # database, certificati e chiave delle sessioni
+
+volumes:
+  limen-data:

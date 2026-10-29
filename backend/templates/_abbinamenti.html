@@ -1,0 +1,20 @@
+{% for v in in_attesa %}
+{% set c = conflitti.get(v.id) %}
+<div class="dafare-card {{ 'err' if c else 'info' }}" role="{{ 'alert' if c else 'status' }}" data-chiave="abb-{{ v.id }}-{{ v.abbinamento_ip }}" data-titolo="{{ t('Conflitto di indirizzo') if c else t('Nuovo dispositivo') }}">
+  <div class="dafare-riga">
+    <span class="dafare-punto {{ '' if c else 'pulsa' }}"></span>
+    <div class="dafare-testo">
+      {% if c %}
+      <b>{{ t("Conflitto di indirizzo") }}</b>
+      <small>{{ t("«%(p1)s» arriva da %(p2)s, già del varco «%(p3)s» (n. %(p4)s)", p1=v.nome, p2=v.abbinamento_ip, p3=c.nome, p4=c.id) }}</small>
+      {% else %}
+      <b>{{ t("Nuovo dispositivo") }}</b>
+      <small>«{{ v.nome }}» · {{ v.abbinamento_ip }}</small>
+      {% endif %}
+    </div>
+  </div>
+  {% if not c %}
+  <form method="post" action="/varchi/{{ v.id }}/abbina"><button type="submit">{{ t("Abbina") }}</button></form>
+  {% endif %}
+</div>
+{% endfor %}

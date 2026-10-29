@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}{{ t("Accedi") }}{% endblock %}
+{% block content_noauth %}
+<style>
+  /* Pagina senza menu: il contenuto sta al centro, con gli stessi token del resto dell'app. */
+  body:not(.has-layout) main { max-width:none; min-height:100vh; display:flex; align-items:center; justify-content:center; padding: var(--space-4); }
+  .login-box { width:min(21rem, 100%); background: var(--card); border:1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-6); }
+  .login-box .brand { display:flex; align-items:center; gap:0.55rem; margin-bottom:1.4rem; font-weight:700; font-size:1.2rem; }
+  .login-box .brand svg { color: var(--text); flex-shrink:0; }
+  .login-box label { display:block; font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-3); }
+  .login-box input { width:100%; margin-top: var(--space-1); padding:0.6rem; }
+  .login-box button { width:100%; margin-top: var(--space-4); padding:0.65rem; }
+  .login-box .lingua-login { display:flex; justify-content:center; margin-top: var(--space-4); }
+  .login-errore { margin:0 0 var(--space-2); padding:0.55rem 0.75rem; border-radius: var(--radius); background: var(--danger-bg); border:1px solid var(--danger-border); color: var(--danger-text); font-size: var(--fs-sm); }
+</style>
+<div class="login-box">
+  <div class="brand">
+    <svg width="36" height="36" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M22 12v38h26"/><circle cx="40" cy="30" r="3.8" fill="var(--accent)" stroke="none"/>
+        </svg>
+    <span>Limen</span>
+  </div>
+  {% if error %}<p class="login-errore" role="alert">{{ error }}</p>{% endif %}
+  <form method="post" action="/login">
+    <label for="login-utente">{{ t("Utente") }}</label>
+    <input type="text" id="login-utente" name="username" required autofocus autocomplete="username">
+    <label for="login-password">{{ t("Password") }}</label>
+    <input type="password" id="login-password" name="password" required autocomplete="current-password">
+    <button type="submit">{{ t("Accedi") }}</button>
+  </form>
+  <div class="lingua-login"><span class="lingua-sw" role="group" aria-label="{{ t('Lingua') }}">{% for cod in LINGUE %}<a href="/lingua/{{ cod }}?next=/login" {{ 'aria-current=true' if cod == lingua_corrente() }} title="{{ LINGUE[cod] }}">{{ cod|upper }}</a>{% endfor %}</span></div>
+</div>
+{% endblock %}

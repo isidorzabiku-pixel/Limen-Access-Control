@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% from "_macros.html" import aiuto %}
+{% block title %}{{ t("Importa persone") }}{% endblock %}
+{% block content %}
+<header class="page-head"><h1>{{ t("Importa persone da CSV") }}{% call aiuto() %}{{ t("Carica un CSV con persone, badge e gruppi. Si può ripetere: chi esiste già viene aggiornato.") }}{% endcall %}</h1></header>
+
+{% if report %}
+<div class="card">
+  {% if report.fatale %}
+  <p style="margin:0; color:var(--err)"><strong>{{ report.fatale }}</strong></p>
+  {% endif %}
+  {% if not report.fatale or report.creati or report.aggiornati %}
+  <h2 style="margin-top:0; font-size:1rem">{{ t("Risultato") }}</h2>
+  <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.6rem">
+    <span class="badge ok">{{ t("%(p1)s persone create", p1=report.creati) }}</span>
+    <span class="badge info">{{ t("%(p1)s aggiornate", p1=report.aggiornati) }}</span>
+    <span class="badge info">{{ t("%(p1)s badge aggiunti", p1=report.badge) }}</span>
+    {% if report.gruppi_creati %}<span class="badge info">{{ t("%(p1)s gruppi creati", p1=report.gruppi_creati) }}</span>{% endif %}
+    {% if report.invariati %}<span class="badge">{{ t("%(p1)s gia' presenti", p1=report.invariati) }}</span>{% endif %}
+    {% if report.errori %}<span class="badge err">{{ t("%(p1)s righe saltate", p1=report.errori|length) }}</span>{% endif %}
+  </div>
+  {% if report.creati or report.aggiornati or report.badge %}
+  <p class="muted" style="margin:0 0 0.6rem">{{ t("Per mandare i nuovi badge ai varchi usa \"Scarica dati ai dispositivi\" dalla pagina Varchi.") }}</p>
+  {% endif %}
+  {% endif %}
+  {% if report.errori %}
+  <table>
+    <tr><th>{{ t("Riga") }}</th><th>{{ t("Motivo") }}</th></tr>
+    {% for riga, motivo in report.errori[:50] %}<tr><td>{{ riga }}</td><td>{{ motivo }}</td></tr>{% endfor %}
+  </table>
+  {% if report.errori|length > 50 %}<p class="muted">{{ t("... e altre %(p1)s righe.", p1=report.errori|length - 50) }}</p>{% endif %}
+  {% endif %}
+  <p style="margin:0.8rem 0 0"><a href="/persone">{{ t("Vai alle persone") }}</a></p>
+</div>
+{% endif %}
+
+<div class="card">
+  <form method="post" action="/persone/importa" enctype="multipart/form-data">
+    <input type="file" name="file" accept=".csv,text/csv,text/plain" required>
+    <button type="submit">{{ t("Importa") }}</button>
+  </form>
+  <h2 style="font-size:1rem; margin:1.2rem 0 0.6rem">{{ t("Formato del file") }}{% call aiuto() %}{{ t("Prima riga = nomi delle colonne:") }} <code>{{ colonne|join('</code>, <code>'|safe) }}</code>{{ t(". Obbligatori:") }} <strong>{{ t("nome") }}</strong> e <strong>{{ t("cognome") }}</strong>{{ t(". Più gruppi separati da") }} <code>|</code>{{ t(". Date:") }} <code>gg/mm/aaaa</code>{{ t(". Massimo %(p1)s righe.", p1=max_righe) }}{% endcall %}</h2>
+  <a class="button ghost" href="/persone/importa/modello.csv">{{ t("Scarica il modello") }}</a>
+</div>
+{% endblock %}

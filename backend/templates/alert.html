@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% from "_macros.html" import vuoto, aiuto %}
+{% block title %}{{ t("Alert") }}{% endblock %}
+{% block content %}
+<header class="page-head"><h1>{{ t("Alert") }}{% call aiuto() %}{{ t("Dispositivi offline e allarmi dei varchi. Un allarme resta finché non lo prendi in carico.") }}{% endcall %}</h1></header>
+
+<style>
+  .alert-row {
+    display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;
+    padding:0.75rem 1rem; margin-bottom:0.5rem;
+    border-left:3px solid var(--muted); border-radius:6px;
+    background:rgba(255,255,255,0.02);
+    transition: background-color 0.15s ease;
+  }
+  .alert-row:last-child { margin-bottom:0; }
+  .alert-row:hover { background:rgba(255,255,255,0.045); }
+  .alert-row.alert-error { border-left-color: var(--err); }
+  .alert-row.alert-warning { border-left-color: #f59e0b; }
+  .alert-main { flex:1; min-width:12rem; display:flex; flex-direction:column; gap:0.15rem; }
+  .alert-title { font-weight:600; display:flex; align-items:center; gap:0.4rem; }
+  .alert-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .alert-error .alert-dot { background: var(--err); }
+  .alert-warning .alert-dot { background: #f59e0b; }
+  .alert-time { font-size:0.75rem; }
+  .alert-head { display:flex; align-items:center; justify-content:space-between; gap:0.75rem; flex-wrap:wrap; margin-bottom:0.75rem; }
+  .alert-head h2 { margin:0; font-size:1rem; }
+</style>
+
+<div class="card">
+  {% set da_gestire = alert|selectattr('evento_id')|list %}
+  {% if da_gestire|length > 1 %}
+  <div class="alert-head">
+    <h2>{{ t("Da gestire") }}</h2>
+    <form method="post" action="/alert/gestisci-tutti" class="inline">
+      <button type="submit" class="ghost">{{ t("Prendi in carico tutti (%(p1)s)", p1=da_gestire|length) }}</button>
+    </form>
+  </div>
+  {% endif %}
+  {% for a in alert %}
+  <div class="alert-row alert-{{ a.livello }}">
+    <div class="alert-main">
+      <div class="alert-title"><span class="alert-dot"></span>{{ a.titolo }}</div>
+      <div class="muted">{{ a.descrizione }}</div>
+      {% if a.timestamp %}<div class="muted alert-time">{{ a.timestamp|ora }}</div>{% endif %}
+    </div>
+    {% if a.evento_id %}
+    <form method="post" action="/alert/{{ a.evento_id }}/gestisci" class="inline">
+      <button type="submit" class="ghost">{{ t("Prendi in carico") }}</button>
+    </form>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="card">{{ vuoto(t('Tutto a posto'), t('Tutti i dispositivi sono online e non ci sono allarmi da gestire.')) }}</div>
+  {% endfor %}
+</div>
+
+{% if gestiti %}
+<div class="card">
+  <div class="alert-head"><h2>{{ t("Presi in carico di recente") }}</h2></div>
+  {% for e in gestiti %}
+  {% set etichetta, _classe = esito_info.get(e.esito, (e.esito.value, 'err')) %}
+  <div class="alert-row">
+    <div class="alert-main">
+      <div class="alert-title">{{ e.varco.nome if e.varco else (e.varco_nome or '—') }} &middot; {{ etichetta }}</div>
+      <div class="muted alert-time">
+        {{ e.timestamp|ora }}{% if e.persona %} &middot; {{ e.persona.nome }} {{ e.persona.cognome }}{% endif %}
+        {{ t("· gestito da %(p1)s il %(p2)s", p1=e.gestito_da or '-', p2=e.gestito_at|ora) }}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

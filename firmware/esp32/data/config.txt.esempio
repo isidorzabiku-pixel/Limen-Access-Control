@@ -1,0 +1,25 @@
+# Slave settings. Copy this file to "config.txt" (same folder), fill it in and upload it with
+# PlatformIO -> "Upload Filesystem Image". On restart the device reads it, saves the settings and deletes the file.
+# Warning: "Upload Filesystem Image" erases the whole data flash: afterwards, press "Pair" in the master again.
+# Lines are "key = value"; use # for comments. Keys you leave out stay as they were (or factory defaults).
+# (The old Italian keys - wifi_nome, password_admin, rele1, ingresso1, led_verde... - are still accepted.)
+
+id = 1
+wifi_name = YOUR_NETWORK_NAME
+wifi_password = YOUR_WIFI_PASSWORD
+ip = 192.168.1.90
+gateway = 192.168.1.1
+subnet = 255.255.255.0
+
+# password of the device page (user "admin"); if left empty the page is open to the whole network
+admin_password = change-me
+
+# pins (-1 = not connected)
+relay1 = 4
+relay2 = 5
+relay1_active_high = yes
+relay2_active_high = yes
+input1 = 6
+input2 = 7
+led_green = 8
+led_red = 9

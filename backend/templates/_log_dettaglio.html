@@ -1,0 +1,44 @@
+{% from "_macros.html" import aiuto %}
+{% set classe = 'err' if r.livello.value == 'error' else ('warning' if r.livello.value == 'warning' else t('info')) %}
+<div class="mon-dr-testa">
+  <div>
+    <h2 id="mon-dr-titolo">{{ codice_etichetta or t('Riga del log') }}</h2>
+    <p class="muted mon-dr-sotto">{{ r.timestamp|ora }} · #{{ r.id }}</p>
+  </div>
+  <button type="button" class="drawer-close mon-dr-chiudi" data-chiudi aria-label="{{ t('Chiudi') }}">&#10005;</button>
+</div>
+
+<div class="drawer-section">
+  <h3>{{ t("Messaggio") }}</h3>
+  <p class="mon-dr-riga" style="margin-top:0">{{ r.messaggio }}</p>
+  {% if codice_descrizione %}<p class="mon-dr-sugg">{{ codice_descrizione }}</p>{% endif %}
+</div>
+
+<div class="drawer-section">
+  <h3>{{ t("Dati della riga") }}</h3>
+  <dl class="mon-dr-dati">
+    <dt>{{ t("Livello") }}</dt><dd><span class="badge {{ classe }}">{{ {'error': t('errore'), 'warning': t('avviso'), t('info'): t('info'), t('debug'): t('debug')}[r.livello.value] }}</span></dd>
+    <dt>{{ t("Origine") }}</dt><dd>{{ r.categoria or '—' }}</dd>
+    {% if r.codice %}<dt>{{ t("Codice") }}</dt><dd><code>{{ r.codice }}</code></dd>{% endif %}
+    {% if r.varco_id %}<dt>{{ t("Varco") }}</dt><dd>{% if varco %}<a href="/varchi?apri={{ varco.id }}">{{ varco.nome }}</a> <span class="muted">(n. {{ varco.id }})</span>{% else %}n. {{ r.varco_id }} <span class="muted">{{ t("(eliminato)") }}</span>{% endif %}</dd>{% endif %}
+    {% if r.utente %}<dt>{{ t("Utente") }}</dt><dd>{{ r.utente }}</dd>{% endif %}
+    {% if r.origine_ip %}<dt>{{ t("Indirizzo") }}</dt><dd><code>{{ r.origine_ip }}</code></dd>{% endif %}
+    <dt>{{ t("Ora locale") }}</dt><dd>{{ r.timestamp|ora }}</dd>
+    <dt>{{ t("Ora UTC") }}</dt><dd><code>{{ utc_ms }}</code></dd>
+  </dl>
+</div>
+
+{% if coppie or grezzo %}
+<div class="drawer-section">
+  <h3>{{ t("Dettagli tecnici") }}</h3>
+  <dl class="mon-dr-dati">
+    {% for k, v in coppie %}<dt>{{ k }}</dt><dd>{{ v }}</dd>{% endfor %}
+  </dl>
+  {% if grezzo %}<code class="campo-tecnico">{{ grezzo }}</code>{% endif %}
+</div>
+{% endif %}
+
+<div class="drawer-section mon-dr-azioni">
+  <a class="button" href="{{ link_contesto }}" title="{{ t('Le righe nei 5 minuti prima e dopo questa, solo di questo varco: spesso la causa sta subito prima.') if r.varco_id else t('Le righe nei 5 minuti prima e dopo questa: spesso la causa sta subito prima.') }}">{{ t("Cosa è successo intorno") }}</a>
+  <button type="button" class="ghost" data-copia="{{ testo_copia }}">{{ t("Copia per una segnalazione") }}</button>
+</div>

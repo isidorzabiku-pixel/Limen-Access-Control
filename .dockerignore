@@ -1,0 +1,13 @@
+.git
+**/__pycache__
+**/*.pyc
+backend/venv
+backend/certs
+backend/.env
+backend/*.db
+backend/*.db-wal
+backend/*.db-shm
+agent
+firmware
+docs
+deploy

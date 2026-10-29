@@ -1,0 +1,189 @@
+{% from "_macros.html" import aiuto %}
+{# Scheda «Log» di Info sistema. Filtri e righe si aggiornano da soli (htmx); il dettaglio si apre in un drawer. #}
+
+<div class="log-riepilogo" role="group" aria-label="{{ t('Riepilogo delle ultime 24 ore') }}">
+  <span class="muted">{{ t("Ultime 24 ore") }}</span>
+  <a class="log-conta err" href="/sistema/info?scheda=log&livello=error&periodo=24h"><strong>{{ riepilogo.error }}</strong> {{ t('errore') if riepilogo.error == 1 else t('errori') }}</a>
+  <a class="log-conta warning" href="/sistema/info?scheda=log&livello=warning&periodo=24h"><strong>{{ riepilogo.warning }}</strong> {{ t('avviso') if riepilogo.warning == 1 else t('avvisi') }}</a>
+  <a class="log-conta info" href="/sistema/info?scheda=log&periodo=24h"><strong>{{ riepilogo.info + riepilogo.warning + riepilogo.error }}</strong> {{ t("righe") }}</a>
+  <span class="log-stato-live" id="log-stato-wrap" {% if pagina > 1 %}hidden{% endif %}>
+    <span class="badge ok" id="log-stato"><span class="live-dot" id="log-dot" style="width:7px;height:7px;margin-right:0.35rem"></span><span id="log-stato-testo">{{ t("in diretta") }}</span></span>
+    <button type="button" class="ghost" id="log-pausa" aria-pressed="false">{{ t("Pausa") }}</button>
+  </span>
+</div>
+
+<div class="card log-diag {{ 'attiva' if diag_attiva }}">
+  <div class="log-diag-testo">
+    <strong>{{ t("Modalità diagnostica") }}</strong>{% call aiuto() %}{{ t("Per cercare problemi di rete: registra i pacchetti per un po', poi si spegne da sola.") }}{% endcall %}
+    {% if diag_attiva %}<span class="badge warning">{{ t("attiva · ancora %(p1)s min", p1=diag_residuo_min) }}</span>{% else %}<span class="muted">{{ t("spenta") }}</span>{% endif %}
+  </div>
+  {% if user.is_admin %}
+  <form method="post" action="/sistema/log/diagnostica" class="log-diag-form">
+    {% if diag_attiva %}
+    <input type="hidden" name="azione" value="spegni"><button type="submit" class="ghost">{{ t("Spegni") }}</button>
+    {% else %}
+    <input type="hidden" name="azione" value="attiva">
+    <label class="visually-hidden" for="log-diag-min">{{ t("Durata") }}</label>
+    <select name="minuti" id="log-diag-min">
+      {% for m in (15, 30, 60, 120) %}<option value="{{ m }}" {{ 'selected' if m == 30 }}>{{ t("%(p1)s minuti", p1=m) }}</option>{% endfor %}
+    </select>
+    <button type="submit">{{ t("Attiva") }}</button>
+    {% endif %}
+  </form>
+  {% endif %}
+</div>
+
+<form id="log-filtri" class="card mon-filtri" method="get" action="/sistema/info" hx-get="/log/righe" hx-target="#log-righe" hx-swap="innerHTML"
+      hx-trigger="change, input from:#log-q delay:350ms, submit, every 4s [!logFermo()]" onsubmit="return false">
+  <input type="hidden" name="scheda" value="log" disabled>
+  <div class="mon-chip-gruppo" role="radiogroup" aria-label="{{ t('Livello') }}">
+    {% for valore, etichetta in livelli_chip %}
+    <label class="mon-chip"><input type="radio" name="livello" value="{{ valore }}" {{ 'checked' if f.livello == valore }}><span>{{ etichetta }}</span></label>
+    {% endfor %}
+  </div>
+  <label class="mon-campo">{{ t("Periodo") }}
+    <select name="periodo" id="log-periodo">
+      <option value="">{{ t("Tutto") }}</option>
+      {% for v, e in (('1h', t('Ultima ora')), ('24h', t('Ultime 24 ore')), ('7g', t('Ultimi 7 giorni'))) %}<option value="{{ v }}" {{ 'selected' if f.periodo == v }}>{{ e }}</option>{% endfor %}
+    </select>
+  </label>
+  <label class="mon-campo">{{ t("Dal") }} <input type="datetime-local" name="da" id="log-da" value="{{ f.da }}" {{ 'disabled' if f.periodo }}></label>
+  <label class="mon-campo">{{ t("Al") }} <input type="datetime-local" name="a" id="log-a" value="{{ f.a }}" {{ 'disabled' if f.periodo }}></label>
+  <label class="mon-campo">{{ t("Varco") }}
+    <select name="varco">
+      <option value="">{{ t("Tutti") }}</option>
+      {% for v in varchi %}<option value="{{ v.id }}" {{ 'selected' if f.varco == v.id }}>{{ v.nome }}</option>{% endfor %}
+    </select>
+  </label>
+  <label class="mon-campo">{{ t("Origine") }}
+    <select name="categoria">
+      <option value="">{{ t("Tutte") }}</option>
+      {% for c, etichetta in categorie %}<option value="{{ c }}" {{ 'selected' if f.categoria == c }}>{{ etichetta }}</option>{% endfor %}
+    </select>
+  </label>
+  <label class="mon-campo">{{ t("Evento") }}
+    <select name="codice">
+      <option value="">{{ t("Tutti") }}</option>
+      {% for c, etichetta in codici %}<option value="{{ c }}" {{ 'selected' if f.codice == c }}>{{ c }}{% if etichetta and etichetta != c %} · {{ etichetta }}{% endif %}</option>{% endfor %}
+    </select>
+  </label>
+  <label class="mon-campo">{{ t("Utente") }}
+    <select name="utente">
+      <option value="">{{ t("Tutti") }}</option>
+      {% for u in utenti_log %}<option value="{{ u }}" {{ 'selected' if f.utente == u }}>{{ u }}</option>{% endfor %}
+    </select>
+  </label>
+  <label class="mon-campo mon-cerca">{{ t("Cerca") }}
+    <input type="search" id="log-q" name="q" value="{{ f.q }}" placeholder="{{ t('testo, IP, codice, dettaglio… (es. 192.168.1.21, firma)') }}" autocomplete="off">
+  </label>
+</form>
+
+<div class="registro-testata" style="margin:0.25rem 0 0.6rem">
+  <span class="muted" id="log-conteggio">{{ totale }} {{ 'riga' if totale == 1 else 'righe' }}{% if filtri_attivi %} {{ t("con questi filtri") }}{% endif %}{% if pagine > 1 %} {{ t("· pagina %(p1)s di %(p2)s", p1=pagina, p2=pagine) }}{% endif %}</span>
+  {% if filtri_attivi %}<a href="/sistema/info?scheda=log" class="muted" style="margin-left:auto">{{ t("Azzera i filtri") }}</a>{% endif %}
+  <a class="button ghost" id="log-export" href="/log/export.csv" title="{{ t('Scarica le righe filtrate in CSV (Excel)') }}" {% if not filtri_attivi %}style="margin-left:auto"{% endif %}>{{ t("Esporta CSV") }}</a>
+  {% if user.is_admin %}<a class="button ghost" href="/sistema/diagnostica.zip" title="{{ t('Zip con il log degli ultimi 7 giorni e lo stato di sistema e varchi, senza chiavi né password: da allegare a una richiesta di assistenza') }}">{{ t("Pacchetto diagnostico") }}</a>{% endif %}
+</div>
+
+<div class="card" style="padding:0; overflow-x:auto;">
+  <table class="tabella-card log-tabella">
+    <thead><tr><th>Data/ora</th><th>{{ t("Livello") }}</th><th>{{ t("Origine") }}</th><th>{{ t("Varco") }}</th><th>{{ t("Messaggio") }}</th><th class="mon-azione"><span class="visually-hidden">{{ t("Dettaglio") }}</span></th></tr></thead>
+    <tbody id="log-righe" aria-live="off">{% include "_log_righe.html" %}</tbody>
+  </table>
+</div>
+{% if pagine > 1 %}
+<nav class="paginazione" aria-label="{{ t('Pagine del log') }}">
+  {% set base = '/sistema/info?scheda=log&' ~ (qs ~ '&' if qs else '') ~ 'pagina=' %}
+  {% if pagina > 1 %}<a class="button ghost" href="{{ base ~ (pagina - 1) }}">{{ t("← Più recenti") }}</a>{% else %}<span></span>{% endif %}
+  <span class="muted">{{ t("Pagina %(p1)s di %(p2)s", p1=pagina, p2=pagine) }}</span>
+  {% if pagina < pagine %}<a class="button ghost" href="{{ base ~ (pagina + 1) }}">{{ t("Più vecchie →") }}</a>{% else %}<span></span>{% endif %}
+</nav>
+{% endif %}
+
+<dialog id="log-dettaglio" class="mon-drawer" aria-labelledby="mon-dr-titolo">
+  <div id="log-dr-corpo"></div>
+</dialog>
+
+<style>
+  .registro-testata { display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap; }
+  .paginazione { display:flex; justify-content:space-between; align-items:center; gap:0.75rem; margin-top:0.9rem; }
+  .log-riepilogo { display:flex; align-items:center; gap:0.6rem 0.9rem; flex-wrap:wrap; margin:0 0 0.9rem; font-size:0.9rem; }
+  .log-conta { text-decoration:none; padding:0.2rem 0.65rem; border-radius:999px; border:1px solid var(--border); color: var(--text); }
+  .log-conta:hover { border-color: var(--accent); }
+  .log-conta.err strong { color: var(--err); } .log-conta.warning strong { color: var(--warning); }
+  .log-stato-live { margin-left:auto; display:inline-flex; align-items:center; gap:0.5rem; }
+  .log-diag { display:flex; align-items:center; justify-content:space-between; gap:0.75rem 1rem; flex-wrap:wrap; padding:0.7rem 1rem; margin-bottom:0.9rem; }
+  .log-diag.attiva { border-color: var(--warning); }
+  .log-diag-testo { display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; }
+  .log-diag-form { display:flex; align-items:center; gap:0.5rem; margin:0; }
+  .log-diag-form select { width:auto; margin:0; }
+  .log-ora { white-space:nowrap; font-variant-numeric: tabular-nums; }
+  .log-msg { overflow-wrap:anywhere; line-height:1.45; text-align:left !important; }
+  .log-meta { display:flex; flex-wrap:wrap; gap:0.2rem 0.6rem; margin-top:0.25rem; font-size:0.78rem; }
+  .log-codice { background: rgba(255,255,255,0.06); padding:0.05rem 0.4rem; border-radius:4px; font-size:0.74rem; letter-spacing:0.02em; }
+  .log-tabella td { vertical-align:top; }
+  .log-tabella tbody tr.log-warning td:first-child { box-shadow: inset 3px 0 0 var(--warning); }
+  .log-tabella tbody tr.log-err td:first-child { box-shadow: inset 3px 0 0 var(--err); }
+  .badge.muted-badge { background: rgba(255,255,255,0.07); color: var(--muted); }
+  .log-tabella tbody tr.log-muted-badge { opacity:0.75; }
+</style>
+<script>
+  var logPausa = false, logPagina = {{ f.pagina if pagina > 1 else 1 }};
+  // Solo la prima pagina (la piu' recente) si aggiorna da sola; con un drawer aperto si sta leggendo, non serve.
+  function logFermo() { var d = document.getElementById('log-dettaglio'); return logPausa || document.hidden || logPagina > 1 || (d && d.open); }
+  (function () {
+    var btn = document.getElementById('log-pausa'), testo = document.getElementById('log-stato-testo');
+    var dot = document.getElementById('log-dot'), badge = document.getElementById('log-stato');
+    var form = document.getElementById('log-filtri'), exp = document.getElementById('log-export');
+    var periodo = document.getElementById('log-periodo'), da = document.getElementById('log-da'), a = document.getElementById('log-a');
+    function mostra() {
+      testo.textContent = logPausa ? T('in pausa') : T('in diretta');
+      badge.className = 'badge ' + (logPausa ? 'warning' : 'ok');
+      dot.style.display = logPausa ? 'none' : '';
+      btn.textContent = logPausa ? T('Riprendi') : T('Pausa');
+      btn.setAttribute('aria-pressed', logPausa ? 'true' : 'false');
+    }
+    // Periodo rapido e intervallo «Dal/Al» sono due modi di dire la stessa cosa: sceglierne uno disattiva l'altro.
+    function sincronizza() { da.disabled = a.disabled = !!periodo.value; }
+    form.addEventListener('change', function (e) {
+      if (e.target === periodo) { if (periodo.value) { da.value = ''; a.value = ''; } sincronizza(); }
+      else if ((e.target === da || e.target === a) && (da.value || a.value)) { periodo.value = ''; sincronizza(); }
+    }, true);
+    // L'esportazione segue i filtri correnti.
+    function aggiornaExport() {
+      var dati = new URLSearchParams(new FormData(form)); dati.delete('scheda');
+      Array.from(dati.keys()).forEach(function (k) { if (!dati.get(k)) dati.delete(k); });
+      exp.href = '/log/export.csv' + (dati.toString() ? '?' + dati.toString() : '');
+    }
+    form.addEventListener('change', aggiornaExport); form.addEventListener('input', aggiornaExport);
+    btn.addEventListener('click', function () { logPausa = !logPausa; mostra(); if (!logPausa) htmx.trigger('#log-filtri', 'submit'); });
+    document.addEventListener('visibilitychange', function () { if (!document.hidden && !logPausa) htmx.trigger('#log-filtri', 'submit'); });
+    sincronizza(); aggiornaExport(); mostra();
+
+    // Drawer di dettaglio (fuori dalla tabella: l'aggiornamento automatico non lo tocca).
+    var drawer = document.getElementById('log-dettaglio'), corpo = document.getElementById('log-dr-corpo'), righe = document.getElementById('log-righe'), ultima = null;
+    righe.addEventListener('click', function (e) {
+      var b = e.target.closest('.mon-apri'); if (!b) return;
+      ultima = b.getAttribute('hx-get');
+      corpo.innerHTML = '<p class="mon-dr-caricamento" role="status">' + T('Caricamento…') + '</p>';
+      if (!drawer.open) { drawer.showModal(); document.body.classList.add('drawer-aperto'); }
+    });
+    drawer.addEventListener('click', function (e) {
+      if (e.target === drawer || e.target.closest('[data-chiudi]')) { drawer.close(); return; }
+      var c = e.target.closest('[data-copia]');
+      if (c) {
+        var t = c.getAttribute('data-copia'), ok = function () { c.textContent = T('Copiato'); setTimeout(function () { c.textContent = T('Copia per una segnalazione'); }, 1800); };
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(ok, function () { window.prompt(T('Copia il testo:'), t); });
+        else window.prompt(T('Copia il testo:'), t);
+      }
+    });
+    drawer.addEventListener('close', function () {
+      document.body.classList.remove('drawer-aperto'); corpo.innerHTML = '';
+      var torna = ultima && Array.prototype.find.call(righe.querySelectorAll('.mon-apri'), function (x) { return x.getAttribute('hx-get') === ultima; });
+      if (torna) torna.focus({ preventScroll: true });
+    });
+    document.body.addEventListener('htmx:responseError', function (e) {
+      if (e.detail && e.detail.target === corpo) corpo.innerHTML = '<p class="mon-dr-caricamento">' + T('Impossibile caricare il dettaglio. Chiudi e riprova.') + '</p>';
+    });
+  })();
+</script>

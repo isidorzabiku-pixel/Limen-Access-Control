@@ -1,0 +1,340 @@
+{% extends "base.html" %}
+{% from "_macros.html" import scarica_dati_button, aiuto %}
+{% block title %}{{ t("Varchi") }}{% endblock %}
+{% block content %}
+{% set offline_count = varchi|rejectattr('online')|list|length %}
+<header class="page-head">
+  <h1>{{ t("Varchi") }}{% call aiuto() %}{{ t("Un varco = configurazione + dispositivo, nello stesso posto.") }}{% endcall %}</h1>
+  <span class="badge info">{{ t("%(p1)s tot", p1=varchi|length) }}</span>
+  {% if offline_count > 0 %}<span class="badge err">{{ t("%(p1)s offline", p1=offline_count) }}</span>{% endif %}
+</header>
+
+<style>
+  .riga-varco { cursor: pointer; }
+  .riga-varco:hover td { background: rgba(255,255,255,0.03); }
+  .riga-apri { color: var(--muted); font-size: 1.4rem; text-decoration: none; padding: 0 0.4rem; }
+  .riga-varco:hover .riga-apri { color: var(--text); }
+</style>
+
+{{ scarica_dati_button(request, '/varchi') }}
+
+{% set modo_err = request.query_params.get('errore') %}
+{% if modo_err == 'sblocco_senza_fascia' %}
+<div class="flash-banner err" role="alert">{{ t("Per lo sblocco programmato scegli la fascia oraria in cui la porta resta libera.") }}</div>
+{% elif modo_err == 'modalita' %}
+<div class="flash-banner err" role="alert">{{ t("Modalità non valida.") }}</div>
+{% elif modo_err == 'funzionamento' %}
+<div class="flash-banner err" role="alert">{{ t("Funzionamento non salvato: la configurazione non è valida. Riprova.") }}</div>
+{% elif modo_err == 'uscita' %}
+<div class="flash-banner err" role="alert">{{ t("Questa uscita non si può comandare da qui.") }}</div>
+{% elif modo_err == 'comando_non_inviato' %}
+<div class="flash-banner err" role="alert">{{ t("Comando non inviato: imposta l'indirizzo IP del dispositivo, oppure controlla che sia raggiungibile.") }}</div>
+{% elif modo_err == 'varco_nome' %}
+<div class="flash-banner err" role="alert">{{ t("Scrivi il nome del varco.") }}</div>
+{% elif modo_err == 'varco_id' %}
+<div class="flash-banner err" role="alert">{{ t("Il numero del varco deve essere un intero positivo.") }}</div>
+{% elif modo_err == 'varco_id_usato' %}
+<div class="flash-banner err" role="alert">{{ t("Esiste già un varco con questo numero: scegline un altro (il prossimo libero è %(p1)s).", p1=prossimo_id) }}</div>
+{% elif modo_err == 'varco_ip' %}
+<div class="flash-banner err" role="alert">{{ t("L'indirizzo IP non è valido: usa il formato 192.168.1.50.") }}</div>
+{% elif modo_err == 'varco_ip_usato' %}
+<div class="flash-banner err" role="alert">{{ t("Questo indirizzo IP è già assegnato a un altro varco.") }}</div>
+{% endif %}
+{% if request.query_params.get('creato') %}
+<div class="flash-banner ok" role="status">{{ t("Varco creato. Apri il dettaglio per descrizione, presenze, anti-passback e funzionamento.") }}</div>
+{% endif %}
+{% if request.query_params.get('funz_salvato') == '1' %}
+<div class="flash-banner ok" role="status">{{ t("Funzionamento salvato. Arriva al varco con «Scarica dati».") }}</div>
+{% elif request.query_params.get('funz_salvato') == '2' %}
+<div class="flash-banner ok" role="status">{{ t("Funzionamento salvato e mandato al dispositivo.") }}</div>
+{% endif %}
+{% if request.query_params.get('eliminato') is not none %}
+<div class="flash-banner ok" role="status">{{ t("Varco eliminato") }}{% if request.query_params.get('eliminato') not in ('', '0') %} {% if request.query_params.get('eliminato') == '1' %}{{ t("; 1 regola è rimasta senza varchi (incompleta)") }}{% else %}{{ t("; %(n)s regole sono rimaste senza varchi (incomplete)", n=request.query_params.get('eliminato')) }}{% endif %}{% endif %}.</div>
+{% endif %}
+{% if request.query_params.get('abbinato') %}
+<div class="flash-banner ok" role="status">{{ t("Abbinamento inviato: il dispositivo salva la chiave e compare online entro pochi secondi.") }}</div>
+{% elif request.query_params.get('errore') == 'abbinamento_ip' %}
+<div class="flash-banner err" role="alert">{{ t("Conflitto di indirizzo IP: quell'indirizzo è già assegnato a un altro varco. Cambia l'IP del dispositivo o del varco e riprova.") }}</div>
+{% elif request.query_params.get('errore') == 'abbinamento' %}
+<div class="flash-banner err" role="alert">{{ t("Richiesta di abbinamento scaduta o già gestita. Se il dispositivo è acceso si ripresenta da solo: riprova tra qualche secondo.") }}</div>
+{% endif %}
+{% set attivo_cache = request.query_params.get('attivo_cache') %}
+{% if attivo_cache == 'ok' %}
+<div class="flash-banner ok" role="status">{{ t("Stato del varco aggiornato e confermato dal dispositivo.") }}</div>
+{% elif attivo_cache == 'nessuna' %}
+<div class="flash-banner warn" role="status">{{ t("Stato del varco salvato, ma il dispositivo non ha confermato entro 2s (offline o irraggiungibile): lo riceverà al prossimo invio dei dati.") }}</div>
+{% endif %}
+{% if request.query_params.get('modalita') == 'ok' %}
+<div class="flash-banner ok" role="status">{{ t("Modalità applicata e mandata al dispositivo.") }}</div>
+{% elif request.query_params.get('modalita_tutti') %}
+<div class="flash-banner warn" role="status">
+  {{ t("%(p1)s su %(p2)s varchi.", p1=t('Emergenza attivata') if request.query_params.get('modalita_tutti') == 'emergenza' else t('Modalità normale ripristinata'), p2=request.query_params.get('n', '0')) }}
+</div>
+{% endif %}
+
+{% if user.is_admin %}
+
+{% set q = request.query_params %}
+<details class="card card-toggle" {% if q.get('errore','').startswith('varco_') %}open{% endif %}>
+  <summary><span class="toggle-plus">+</span> {{ t("Nuovo varco") }}</summary>
+  <div class="card-toggle-body">
+    <form method="post" action="/varchi" class="nuovo-varco">
+      <div class="nv-campo nv-nome">
+        <div class="nv-et"><label for="nv-nome">{{ t("Nome") }}</label></div>
+        <input type="text" id="nv-nome" name="nome" value="{{ q.get('nuovo_nome','') }}" placeholder="{{ t('es. Cancellino pedonale') }}" maxlength="100" required>
+      </div>
+      <div class="nv-campo nv-id">
+        <div class="nv-et"><label for="nv-id">{{ t("N. varco") }}</label>{% call aiuto() %}{{ t("Il numero del dispositivo (il suo «varco_id»). Deve essere unico.") }}{% endcall %}</div>
+        <input type="number" id="nv-id" name="varco_id" min="1" max="2000000000" value="{{ q.get('nuovo_id') if q.get('nuovo_id') else prossimo_id }}" required>
+      </div>
+      <div class="nv-campo nv-ip">
+        <div class="nv-et"><label for="nv-ip">{{ t("Indirizzo IP") }}</label>{% call aiuto() %}{{ t("Indirizzo fisso del dispositivo in rete. Si imposta solo qui.") }}{% endcall %}</div>
+        <input type="text" id="nv-ip" name="ip_address" value="{{ q.get('nuovo_ip','') }}" placeholder="192.168.1.50" inputmode="decimal" maxlength="45" autocomplete="off" required>
+      </div>
+      <button type="submit" class="nv-crea">{{ t("Crea varco") }}</button>
+    </form>
+  </div>
+</details>
+<style>
+  .nuovo-varco { display:grid; grid-template-columns: minmax(0,2fr) minmax(0,0.8fr) minmax(0,1.3fr) auto; gap:0.75rem; align-items:end; }
+  .nv-campo { display:flex; flex-direction:column; gap:0.3rem; min-width:0; }
+  .nv-et { display:flex; align-items:center; gap:0.3rem; min-height:1.3rem; font-size:0.82rem; color: var(--muted); font-weight:600; }
+  .nv-et label { margin:0; }
+  .nuovo-varco input { width:100%; margin:0; }
+  .nuovo-varco .nv-crea { margin:0; white-space:nowrap; }
+  @media (max-width: 760px) {
+    .nuovo-varco { grid-template-columns: 1fr 1fr; }
+    .nuovo-varco .nv-nome, .nuovo-varco .nv-crea { grid-column: 1 / -1; }
+  }
+</style>
+{% endif %}
+
+<div class="table-filter-row">
+  <input type="search" class="table-filter" name="filtro" autocomplete="off" data-filter-target="#varchi-table" placeholder="{{ t('Filtra per nome, IP, stato...') }}">
+</div>
+
+<div class="card" style="padding:0; overflow-x:auto;">
+  {% include "_varchi_tabella.html" %}
+</div>
+
+{% set in_emergenza = varchi|selectattr('modalita', 'equalto', 'emergenza')|list|length %}
+<div class="card" style="{{ 'border-color:var(--err);' if in_emergenza else '' }}">
+  <h2 style="margin-top:0; font-size:1rem;">{{ t("Emergenza") }}{% call aiuto() %}{{ t("Sblocca tutti i varchi (porta libera, senza badge), per esempio in evacuazione. Vale finché non torni alla modalità normale.") }}{% endcall %}</h2>
+  <div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
+    {% if in_emergenza < varchi|length %}
+    <form action="/varchi/modalita-tutti" method="post">
+      <input type="hidden" name="modalita" value="emergenza">
+      <button type="submit" class="danger"
+              data-conferma="{{ t('Chiunque potrà passare senza badge finché non ripristini la modalità normale.') }}" data-conferma-titolo="{{ t('Sbloccare tutti i varchi?') }}"
+              data-conferma-impatto="{{ t('Varchi che passano in porta libera: %(p1)s;Ogni passaggio resta nel registro', p1=varchi|length - in_emergenza) }}" data-conferma-azione="{{ t('Sblocca tutti') }}">{{ t("Sblocca tutti i varchi") }}</button>
+    </form>
+    {% endif %}
+    {% if in_emergenza %}
+    <form action="/varchi/modalita-tutti" method="post">
+      <input type="hidden" name="modalita" value="normale">
+      <button type="submit">{{ t("Ripristina modalità normale (%(p1)s in emergenza)", p1=in_emergenza) }}</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block overlay %}
+{% if varco_aperto %}
+{% set v = varco_aperto %}
+<a href="/varchi" class="drawer-backdrop" aria-label="{{ t('Chiudi dettaglio varco') }}"></a>
+<aside class="drawer">
+  <div class="drawer-header">
+    <div style="min-width:0">
+      <div class="drawer-titolo-riga">
+        <h2>{{ v.nome }}</h2>
+        {% if v.online %}<span class="badge ok">{{ t("Online") }}</span>{% else %}<span class="badge err">{{ t("Offline") }}</span>{% endif %}
+        {% if not v.attivo %}<span class="badge err">{{ t("Disattivato") }}</span>{% endif %}
+        {% if v.modalita != 'normale' %}<span class="badge {{ 'err' if v.modalita == 'emergenza' else 'warning' }}">{{ {'sblocco': t('Sblocco programmato'), 'manutenzione': t('Manutenzione'), 'emergenza': t('Emergenza')}[v.modalita] }}</span>{% endif %}
+      </div>
+      {% if v.descrizione %}<p class="muted drawer-sotto">{{ v.descrizione }}</p>{% endif %}
+    </div>
+    <a href="/varchi" class="drawer-close" aria-label="{{ t('Chiudi') }}">&#10005;</a>
+  </div>
+
+  <div class="schede drawer-schede" data-schede data-schede-param="scheda">
+    <div class="schede-lista" role="tablist" aria-label="{{ t('Sezioni del varco') }}">
+      <button type="button" role="tab" class="scheda-btn" id="tab-controllo" aria-controls="pan-controllo" data-scheda="controllo" aria-selected="{{ 'true' if scheda == 'controllo' else 'false' }}">{{ t("Controllo") }}</button>
+      <button type="button" role="tab" class="scheda-btn" id="tab-impostazioni" aria-controls="pan-impostazioni" data-scheda="impostazioni" aria-selected="{{ 'true' if scheda == 'impostazioni' else 'false' }}">{{ t("Impostazioni") }}</button>
+      <button type="button" role="tab" class="scheda-btn" id="tab-dispositivo" aria-controls="pan-dispositivo" data-scheda="dispositivo" aria-selected="{{ 'true' if scheda == 'dispositivo' else 'false' }}">{{ t("Dispositivo") }}</button>
+    </div>
+
+    {# ---------------- CONTROLLO: cio' che si fa tutti i giorni ---------------- #}
+    <section role="tabpanel" class="scheda-pannello" id="pan-controllo" aria-labelledby="tab-controllo" {{ '' if scheda == 'controllo' else 'hidden' }}>
+      <div class="drawer-section">
+        <h3>{{ t("Apertura") }}{% call aiuto(etichetta=t("apertura")) %}{{ t("Apre subito il varco. Vale una volta sola: se il dispositivo è spento il comando va perso.") }}{% endcall %}</h3>
+        <form action="/varchi/{{ v.id }}/apri" method="post">
+          <input type="hidden" name="redirect_to" value="/varchi?apri={{ v.id }}&scheda=controllo">
+          {% set nessuna_apre = fn_esplicito and not (fn.uscite|selectattr('r', 'equalto', 'apre')|list) %}
+          <button type="submit" class="btn-blocco" {% if not v.attivo or nessuna_apre %}disabled aria-describedby="apri-motivo"{% endif %}>{{ t("Apri ora") }}</button>
+        </form>
+        {% if not v.attivo %}<p class="muted nota-azione" id="apri-motivo">{{ t("Varco disattivato: riattivalo per poterlo aprire.") }}</p>
+        {% elif nessuna_apre %}<p class="muted nota-azione" id="apri-motivo">{{ t("Nessuna uscita è impostata su «Apre»: scegline una in Funzionamento.") }}</p>
+        {% elif not v.ip_address %}<p class="muted nota-azione">{{ t("Imposta l'indirizzo IP del dispositivo dalla tabella dei varchi per poter aprire da qui.") }}</p>
+        {% elif not v.online %}<p class="muted nota-azione">{{ t("Il dispositivo risulta offline: il comando non può arrivare e viene rifiutato.") }}</p>{% endif %}
+      </div>
+
+      <div class="drawer-section">
+        <h3>{{ t("Funzionamento") }}{% call aiuto(etichetta=t("funzionamento")) %}{{ t("Modalità, lettori, uscite e ingressi del varco. La modalità arriva subito; il resto con «Scarica dati».") }}{% endcall %}</h3>
+        <div class="riga-azione">
+          <span class="funz-riepilogo">{% if v.modalita != 'normale' %}<strong>{{ {'sblocco': t('Sblocco programmato'), 'manutenzione': t('Manutenzione'), 'emergenza': t('Emergenza')}[v.modalita] }}</strong> · {% endif %}{{ fn_riepilogo }}{% if not fn_esplicito %} <span class="muted">{{ t("· valori predefiniti") }}</span>{% endif %}</span>
+          <a href="/varchi?apri={{ v.id }}&scheda=controllo&funz=1" class="btn-link">{{ t("Configura") }}</a>
+        </div>
+      </div>
+
+      {% if comandi_uscite %}
+      <div class="drawer-section">
+        <h3>{{ t("Uscite") }}{% call aiuto(etichetta=t("uscite")) %}{{ t("Comandi alle uscite «Altro» e all'inseritore allarme. Se il dispositivo è offline non partono.") }}{% endcall %}</h3>
+        {% if not v.online %}<p class="muted nota-azione">{{ t("Dispositivo offline: lo stato delle uscite non è noto e i comandi non possono arrivare.") }}</p>{% endif %}
+        {% for c in comandi_uscite %}
+        <form action="/varchi/{{ v.id }}/uscita/{{ c.indice }}" method="post" class="riga-azione uscita-comando">
+          {% if c.interruttore %}
+          <span>{% if v.online %}<span class="pallino {{ 'warning' if c.acceso else '' }}"></span><strong>{% if c.inseritore %}{{ t('Inserito') if c.acceso else t('Disinserito') }}{% else %}{{ t('Acceso') if c.acceso else t('Spento') }}{% endif %}</strong>{% else %}<strong class="muted">{{ t("Stato non disponibile") }}</strong>{% endif %} <span class="muted">· {{ c.nome }}</span></span>
+          <input type="hidden" name="azione" value="{{ 'spegni' if c.acceso else 'accendi' }}">
+          <button type="submit" class="ghost" {% if not v.attivo or not v.online %}disabled{% endif %}>{% if c.inseritore %}{{ t('Disinserisci') if c.acceso else t('Inserisci') }}{% else %}{{ t('Spegni') if c.acceso else t('Accendi') }}{% endif %}</button>
+          {% else %}
+          <span><strong>{{ c.nome }}</strong> <span class="muted">· {{ c.sec }} s</span></span>
+          <input type="hidden" name="azione" value="attiva">
+          <button type="submit" class="ghost" {% if not v.attivo or not v.online %}disabled{% endif %}>{{ t("Attiva") }}</button>
+          {% endif %}
+        </form>
+        {% endfor %}
+        {% if comandi_uscite|selectattr('inseritore')|list %}<p class="muted nota-azione">{{ t("L'inseritore non sostituisce la centrale antintrusione.") }}</p>{% endif %}
+      </div>
+      {% endif %}
+
+      {% if user.is_admin %}
+      <div class="drawer-section">
+        <h3>{{ t("Stato") }}{% call aiuto(etichetta=t("stato del varco")) %}{% if v.attivo %}{{ t("Il varco concede l'accesso a chi ha una regola valida.") }}{% else %}{{ t("Disattivato: nessuno entra, nemmeno con l'apertura remota.") }}{% endif %}{% endcall %}</h3>
+        <div class="riga-azione">
+          {% if v.attivo %}
+          <span><span class="pallino ok"></span> {{ t("Attivo") }}</span>
+          <form action="/varchi/{{ v.id }}/attivo" method="post">
+            <button type="submit" class="danger"
+                    data-conferma="{{ t('Da questo momento «%(p1)s» nega l\'accesso a chiunque (badge o apertura remota) finché non lo riattivi.', p1=v.nome) }}"
+                    data-conferma-titolo="{{ t('Disattivare il varco?') }}" data-conferma-impatto="{{ t('Regole su questo varco che non avranno effetto: %(p1)s', p1=n_policy_varco) }}"
+                    data-conferma-azione="{{ t('Disattiva') }}">{{ t("Disattiva") }}</button>
+          </form>
+          {% else %}
+          <span style="color:var(--err)"><span class="pallino err"></span> {{ t("Disattivato") }}</span>
+          <form action="/varchi/{{ v.id }}/attivo" method="post">
+            <button type="submit" class="success">{{ t("Riattiva") }}</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="drawer-section">
+        <h3>{{ t("Ultimi passaggi") }}</h3>
+        {% for e in ultimi_passaggi %}
+        {% set info_esito = esito_info.get(e.esito, (e.esito.value, 'err')) %}
+        <div class="passaggio">
+          <span class="pallino {{ info_esito[1] }}"></span>
+          <div class="passaggio-testo">
+            <div>{% if e.persona %}{{ e.persona.nome }} {{ e.persona.cognome }}{% elif e.media_codice %}{{ t("Codice %(p1)s", p1=e.media_codice) }}{% else %}{{ t("Sconosciuto") }}{% endif %}</div>
+            <div class="muted{{ ' passaggio-ko' if info_esito[1] == 'err' }}">{{ info_esito[0] }}{% if e.dettaglio %} &middot; {{ e.dettaglio }}{% endif %}</div>
+          </div>
+          <span class="muted passaggio-ora">{{ e.timestamp|ora('%d/%m %H:%M') }}</span>
+        </div>
+        {% else %}
+        <p class="muted" style="margin:0">{{ t("Nessun passaggio ancora registrato su questo varco.") }}</p>
+        {% endfor %}
+        {% if ultimi_passaggi %}<p style="margin:0.7rem 0 0"><a href="/monitoraggio?varco={{ v.id }}">{{ t("Vedi tutti i passaggi →") }}</a></p>{% endif %}
+      </div>
+    </section>
+
+    {# ---------------- IMPOSTAZIONI: si cambiano raramente, un solo Salva ---------------- #}
+    <section role="tabpanel" class="scheda-pannello" id="pan-impostazioni" aria-labelledby="tab-impostazioni" {{ '' if scheda == 'impostazioni' else 'hidden' }}>
+      <form action="/varchi/{{ v.id }}/modifica" method="post">
+        <div class="drawer-section">
+          <h3>{{ t("Generale") }}</h3>
+          <label class="campo-etichetta" for="imp-descrizione">{{ t("Descrizione") }}</label>
+          <input type="text" id="imp-descrizione" name="descrizione" value="{{ v.descrizione or '' }}" class="campo">
+        </div>
+
+        <div class="drawer-section">
+          <h3>{{ t("Presenze") }}</h3>
+          <div class="riga-opzione">
+            <label><input type="checkbox" name="conta_presenze" value="1" {{ "checked" if v.conta_presenze }}> {{ t("Conta le presenze") }}</label>
+            {% call aiuto(etichetta=t("conteggio presenze")) %}{{ t("Serve per sapere chi è dentro adesso: servono un lettore di ingresso e uno di uscita.") }}{% endcall %}
+          </div>
+        </div>
+
+        <div class="drawer-section">
+          <h3>Anti-passback{% call aiuto(etichetta=t("anti-passback")) %}{{ t("Chi è già dentro non può rientrare senza essere uscito. «Solo allarme»: passa, ma l'evento va in") }} <strong>{{ t("allarme") }}</strong> {{ t("(pagina Alert). «Blocca»: chi è già dentro non apre i lettori di ingresso; l'uscita passa sempre. «Dimentica dopo»: passati i minuti la posizione non conta più (vuoto = mai). Va attivato anche sulla persona (scheda Presenza).") }}{% endcall %}</h3>
+          <div class="riga-opzione"><label class="sw"><input type="checkbox" name="anti_passback_enabled" value="1" id="imp-ap" {{ "checked" if v.anti_passback_enabled }}> {{ t("Attiva l'anti-passback") }}</label></div>
+          <div id="imp-ap-opzioni" class="sotto-opzioni" {{ '' if v.anti_passback_enabled else 'inert' }}>
+            <label class="campo-etichetta" for="imp-ap-modalita">{{ t("Se la regola viene violata") }}</label>
+            <select id="imp-ap-modalita" name="anti_passback_modalita" class="campo corto">
+              <option value="soft" {{ 'selected' if v.anti_passback_modalita != 'hard' }}>{{ t("Solo allarme") }}</option>
+              <option value="hard" {{ 'selected' if v.anti_passback_modalita == 'hard' }}>{{ t("Blocca l'accesso") }}</option>
+            </select>
+            <label class="campo-etichetta" for="imp-ap-timeout">{{ t("Dimentica la posizione dopo (minuti)") }}</label>
+            <input type="number" id="imp-ap-timeout" name="anti_passback_timeout_min" value="{{ v.anti_passback_timeout_min or '' }}" min="1" max="10080" placeholder="{{ t('Mai') }}" class="campo corto" inputmode="numeric">
+          </div>
+          <script>
+            (function () {
+              var c = document.getElementById('imp-ap'), o = document.getElementById('imp-ap-opzioni');
+              if (c && o) c.addEventListener('change', function () { if (c.checked) o.removeAttribute('inert'); else o.setAttribute('inert', ''); });
+            })();
+          </script>
+        </div>
+
+        <div class="barra-salva"><button type="submit">{{ t("Salva impostazioni") }}</button></div>
+      </form>
+    </section>
+
+    {# ---------------- DISPOSITIVO: collegamento dello slave ---------------- #}
+    <section role="tabpanel" class="scheda-pannello" id="pan-dispositivo" aria-labelledby="tab-dispositivo" {{ '' if scheda == 'dispositivo' else 'hidden' }}>
+      <div class="drawer-section">
+        <h3>{{ t("Collegamento") }}{% call aiuto(etichetta=t("collegamento")) %}{{ t("L'IP del dispositivo si modifica dalla tabella principale dei varchi.") }}{% endcall %}</h3>
+        <dl class="dati">
+          <dt>{{ t("Stato") }}</dt><dd>{% if v.online %}<span class="pallino ok"></span> {{ t("Online") }}{% else %}<span class="pallino err"></span> {{ t("Offline") }}{% endif %}</dd>
+          <dt>{{ t("Indirizzo IP") }}</dt><dd>{{ v.ip_address or t("non impostato") }}</dd>
+          <dt>{{ t("Ultimo contatto") }}</dt><dd>{{ v.ultimo_contatto|ora if v.ultimo_contatto else t("mai") }}</dd>
+        </dl>
+      </div>
+
+      {% if user.is_admin %}
+      <div class="drawer-section">
+        <h3>{{ t("Abbinamento") }}{% call aiuto(etichetta=t("abbinamento")) %}{{ t("Sul dispositivo bastano la rete e") }} <code>{{ t("varco_id: %(p1)s", p1=v.id) }}</code>{{ t(". Compare in cima ai Varchi: premi «Abbina».") }}{% endcall %}</h3>
+        <p class="muted nota-azione" style="margin-top:0">{% if v.ultimo_heartbeat %}{{ t("Abbinato al dispositivo %(p1)s.", p1=v.ip_address) }}{% else %}{{ t("Dispositivo non ancora abbinato: accendilo con") }} <code>{{ t("varco_id: %(p1)s", p1=v.id) }}</code> {{ t("e premi «Abbina» quando compare in cima alla pagina.") }}{% endif %}</p>
+        <details class="anteprima">
+          <summary>{{ t("Chiave, per firmware senza abbinamento") }}</summary>
+          <div class="campo-copia">
+            <code id="api-key-{{ v.id }}" class="campo-tecnico">{{ v.api_key }}</code>
+            <button type="button" class="ghost" data-copy-target="#api-key-{{ v.id }}">{{ t("Copia") }}</button>
+          </div>
+        </details>
+      </div>
+
+      <div class="drawer-section zona-pericolo">
+        <h3>{{ t("Zona delicata") }}</h3>
+        <form action="/varchi/{{ v.id }}/rigenera-api-key" method="post">
+          <button type="submit" class="danger"
+                  data-conferma="{{ t('La chiave attuale smette subito di funzionare: il dispositivo di «%(p1)s» resta scollegato finché non lo abbini di nuovo (si ripresenta da solo entro un minuto).', p1=v.nome) }}"
+                  data-conferma-titolo="{{ t('Reimpostare la chiave?') }}" data-conferma-azione="{{ t('Reimposta') }}">{{ t("Reimposta la chiave") }}</button>
+        </form>
+        <p class="muted nota-azione">{{ t("Usala se la chiave potrebbe essere stata esposta o per sostituire il dispositivo. Un dispositivo con la chiave scritta a mano nel config va aggiornato a mano.") }}</p>
+        <form action="/varchi/{{ v.id }}/elimina" method="post" style="margin-top:1rem">
+          <button type="submit" class="danger"
+                  data-conferma="{{ t('«%(nome)s» verrà eliminato per sempre.', nome=v.nome) }}{% if policy_varco %} {{ t('È collegato a %(n)s regole (%(elenco)s%(altre)s): verrà tolto da tutte. Quelle che restano senza varchi (%(orfane)s) non vengono eliminate: restano incomplete e non concedono accessi finché non scegli un altro varco o le elimini. Le persone e i gruppi perdono l\'accesso a questo varco.', n=n_policy_varco, elenco=policy_varco[:5]|join(', '), altre=t(' e altre') if policy_varco|length > 5 else '', orfane=n_policy_orfane) }}{% else %} {{ t('Non è collegato a nessuna regola.') }}{% endif %} {{ t('L\'operazione non è reversibile.') }}"
+                  data-conferma-titolo="{{ t('Eliminare il varco? È usato da %(n)s policy', n=n_policy_varco) if policy_varco else t('Eliminare il varco?') }}"
+                  data-conferma-impatto="{{ t('Regole che lo usano: %(p1)s;Regole che restano incomplete (senza varchi): %(p2)s;Passaggi e log restano consultabili;Il dispositivo fisico non viene toccato', p1=n_policy_varco, p2=n_policy_orfane) }}"
+                  data-conferma-azione="{{ t('Elimina varco') }}">{{ t("Elimina il varco") }}</button>
+        </form>
+        <p class="muted nota-azione">{{ t("Se vuoi solo fermarlo senza perdere storico e regole, disattivalo dalla scheda Controllo.") }}</p>
+      </div>
+      {% endif %}
+    </section>
+  </div>
+</aside>
+{% if funz_aperto %}{% include "_funzionamento_popup.html" %}{% endif %}
+{% endif %}
+{% endblock %}

@@ -1,0 +1,25 @@
+<div id="mon-meta" data-storico="{{ 1 if storico else 0 }}" hidden></div>
+<div class="registro-testata">
+  <span class="muted">{{ totale }} {{ t('passaggio') if totale == 1 else t('passaggi') }}{% if filtri_attivi %} {{ t("con questi filtri") }}{% endif %}{% if pagine > 1 %} {{ t("· pagina %(p1)s di %(p2)s", p1=pagina, p2=pagine) }}{% endif %}</span>
+  {% if filtri_attivi %}<a href="/monitoraggio" class="muted" style="margin-left:auto">{{ t("Azzera i filtri") }}</a>{% endif %}
+  {% if totale %}
+  <a class="button ghost" href="/monitoraggio/export.csv{{ '?' ~ qs if qs }}"
+     title="{{ t('Esporta %(p1)s righe in CSV (Excel)', p1=[totale, max_righe_csv]|min) }}">{{ t("Esporta CSV") }}</a>
+  {% endif %}
+</div>
+
+<div class="card" style="padding:0; overflow-x:auto;">
+  <table class="tabella-card" id="mon-tabella">
+    <thead><tr><th>Data/ora</th><th>{{ t("Varco") }}</th><th>{{ t("Persona") }}</th><th>{{ t("Credenziale") }}</th><th>{{ t("Esito") }}</th><th class="mon-azione"><span class="visually-hidden">{{ t("Dettaglio") }}</span></th></tr></thead>
+    <tbody id="mon-righe" aria-live="off">{% include "_monitoraggio_righe.html" %}</tbody>
+  </table>
+</div>
+
+{% if pagine > 1 %}
+<nav class="paginazione" aria-label="{{ t('Pagine dei passaggi') }}">
+  {% set base = '/monitoraggio?' ~ (qs ~ '&' if qs else '') ~ 'pagina=' %}
+  {% if pagina > 1 %}<a class="button ghost" href="{{ base ~ (pagina - 1) }}">{{ t("← Più recenti") }}</a>{% else %}<span></span>{% endif %}
+  <span class="muted">{{ t("Pagina %(p1)s di %(p2)s", p1=pagina, p2=pagine) }}</span>
+  {% if pagina < pagine %}<a class="button ghost" href="{{ base ~ (pagina + 1) }}">{{ t("Più vecchi →") }}</a>{% else %}<span></span>{% endif %}
+</nav>
+{% endif %}

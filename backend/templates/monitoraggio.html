@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% from "_macros.html" import aiuto %}
+{% block title %}{{ t("Monitoraggio") }}{% endblock %}
+{% block content %}
+<header class="page-head">
+  <h1>{{ t("Monitoraggio") }}{% call aiuto() %}{{ t("I passaggi ai varchi, in diretta. Con «Dal / Al» diventa storico, con ricerca ed esportazione CSV.") }}{% endcall %}</h1>
+  <span class="badge ok" id="mon-stato"><span class="live-dot" id="mon-dot" style="width:7px;height:7px;margin-right:0.35rem"></span><span id="mon-stato-testo">{{ t("in diretta") }}</span></span>
+  <button type="button" class="ghost page-head-right" id="mon-pausa" aria-pressed="false">{{ t("Pausa") }}</button>
+</header>
+
+{% set e = request.query_params.get('errore') %}
+{% if e == 'badge_duplicato' %}<div class="flash-banner err" role="alert">{{ t("Questo codice è già associato a un'altra persona.") }}</div>{% endif %}
+{% if e == 'badge_vuoto' %}<div class="flash-banner err" role="alert">{{ t("Scegli la persona a cui assegnare il badge.") }}</div>{% endif %}
+{% if request.query_params.get('assegnato') %}<div class="flash-banner ok" role="status">{{ t("Badge assegnato: da ora il varco lo riconosce (dopo «Scarica dati ai dispositivi»).") }}</div>{% endif %}
+
+<form id="mon-filtri" class="card mon-filtri" hx-get="/monitoraggio/righe" hx-target="#mon-risultati" hx-swap="innerHTML"
+      hx-trigger="change, input from:#mon-q delay:350ms, submit, every 3s [!monFermo()]" onsubmit="return false">
+  <div class="mon-chip-gruppo" role="radiogroup" aria-label="{{ t('Esito') }}">
+    {% for valore, etichetta in [('', t('Tutti')), ('concessi', t('Concessi')), ('negati', t('Negati')), ('allarmi', t('Allarmi'))] %}
+    <label class="mon-chip"><input type="radio" name="esito" value="{{ valore }}" {{ 'checked' if f.esito == valore }}><span>{{ etichetta }}</span></label>
+    {% endfor %}
+  </div>
+  <label class="mon-campo">{{ t("Esito preciso") }}
+    <select name="motivo">
+      <option value="">{{ t("Tutti") }}</option>
+      {% for nome, etichetta in esiti %}<option value="{{ nome }}" {{ 'selected' if f.esito == nome }}>{{ etichetta }}</option>{% endfor %}
+    </select>
+  </label>
+  <label class="mon-campo">{{ t("Dal") }} <input type="date" name="da" value="{{ f.da.isoformat() if f.da else '' }}"></label>
+  <label class="mon-campo">{{ t("Al") }} <input type="date" name="a" value="{{ f.a.isoformat() if f.a else '' }}"></label>
+  <label class="mon-campo">{{ t("Varco") }}
+    <select name="varco">
+      <option value="">{{ t("Tutti") }}</option>
+      {% for v in varchi %}<option value="{{ v.id }}" {{ 'selected' if f.varco == v.id }}>{{ v.nome }}</option>{% endfor %}
+    </select>
+  </label>
+  <label class="mon-campo mon-cerca">{{ t("Persona o credenziale") }}
+    <input type="search" id="mon-q" name="q" value="{{ f.q }}" placeholder="{{ t('es. Rossi, 0004523981') }}" autocomplete="off">
+  </label>
+</form>
+
+<div id="mon-risultati" aria-live="off">{% include "_monitoraggio_blocco.html" %}</div>
+
+{# Fuori da #mon-risultati: l'aggiornamento automatico della tabella non lo tocca mai. #}
+<dialog id="mon-dettaglio" class="mon-drawer" aria-labelledby="mon-dr-titolo">
+  <div id="mon-dr-corpo"></div>
+</dialog>
+
+<style>
+  #mon-tabella tbody tr.mon-nuova { animation: mon-evidenzia 2.2s ease-out 1; }
+  @keyframes mon-evidenzia { from { background: rgba(56,189,248,0.22); } to { background: transparent; } }
+  .mon-assegna summary { cursor:pointer; color: var(--accent); font-size: var(--fs-xs); margin-top:0.35rem; list-style:none; }
+  .mon-assegna summary::-webkit-details-marker { display:none; }
+  .mon-assegna form { display:flex; gap: var(--space-2); flex-wrap:wrap; margin-top:0.4rem; justify-content:flex-end; }
+  .mon-assegna select { max-width:13rem; }
+  .registro-testata { display:flex; align-items:center; gap:0.75rem; margin:0.25rem 0 0.6rem; }
+  .paginazione { display:flex; justify-content:space-between; align-items:center; gap:0.75rem; margin-top:0.9rem; }
+</style>
+
+<script>
+  // Pausa manuale; il polling si ferma anche mentre si usa un modulo dentro la tabella
+  // (altrimenti il refresh richiude il menu a metà scelta), quando la scheda e' nascosta
+  // e nello storico (periodo scelto o pagina successiva): li' non c'e' nulla da seguire.
+  var monPausaManuale = false, monInInterazione = false;
+  function monStorico() { var m = document.getElementById('mon-meta'); return !!m && m.dataset.storico === '1'; }
+  function monFermo() { return monPausaManuale || monInInterazione || document.hidden || monStorico(); }
+  (function () {
+    var btn = document.getElementById('mon-pausa'), testo = document.getElementById('mon-stato-testo');
+    var dot = document.getElementById('mon-dot'), badge = document.getElementById('mon-stato');
+    var risultati = document.getElementById('mon-risultati'), ultimoId = 0, eraStorico = monStorico();
+    function mostra() {
+      var storico = monStorico(), fermo = monPausaManuale || monInInterazione;
+      testo.textContent = storico ? T('storico') : (monPausaManuale ? T('in pausa') : (monInInterazione ? T('in pausa (stai scrivendo)') : T('in diretta')));
+      badge.className = 'badge ' + (storico ? 'info' : (fermo ? 'warning' : 'ok'));
+      dot.style.display = (storico || fermo) ? 'none' : '';
+      btn.hidden = storico;
+      btn.textContent = monPausaManuale ? T('Riprendi') : T('Pausa');
+      btn.setAttribute('aria-pressed', monPausaManuale ? 'true' : 'false');
+    }
+    // Chip ed «Esito preciso» sono due modi di dire la stessa cosa: sceglierne uno azzera l'altro.
+    var formFiltri = document.getElementById('mon-filtri');
+    formFiltri.addEventListener('change', function (e) {
+      var motivo = formFiltri.elements['motivo'];
+      if (e.target.name === 'esito') motivo.value = '';
+      else if (e.target === motivo && motivo.value) {
+        var tutti = formFiltri.querySelector('input[name=esito][value=""]'); if (tutti) tutti.checked = true;
+      }
+    }, true);
+    btn.addEventListener('click', function () {
+      monPausaManuale = !monPausaManuale; mostra();
+      if (!monPausaManuale) htmx.trigger('#mon-filtri', 'submit');
+    });
+    risultati.addEventListener('focusin', function (e) { if (e.target.closest('.mon-assegna')) { monInInterazione = true; mostra(); } });
+    risultati.addEventListener('focusout', function (e) {
+      if (!e.target.closest('.mon-assegna')) return;
+      setTimeout(function () { if (!risultati.querySelector('.mon-assegna :focus')) { monInInterazione = false; mostra(); } }, 0);
+    });
+    // Drawer «dettaglio e motivo»: il pulsante di riga carica /eventi/ID/perche nel pannello laterale.
+    // Il pannello sta fuori dalla tabella, quindi l'aggiornamento automatico non lo chiude ne' lo sposta.
+    var drawer = document.getElementById('mon-dettaglio'), corpo = document.getElementById('mon-dr-corpo'), ultimaUrl = null;
+    function chiudiDrawer() { if (drawer.open) drawer.close(); }
+    risultati.addEventListener('click', function (e) {
+      var b = e.target.closest('.mon-apri'); if (!b) return;
+      ultimaUrl = b.getAttribute('hx-get');
+      corpo.innerHTML = '<p class="mon-dr-caricamento" role="status">' + T('Caricamento…') + '</p>';
+      if (!drawer.open) { drawer.showModal(); document.body.classList.add('drawer-aperto'); }
+    });
+    drawer.addEventListener('click', function (e) {
+      if (e.target === drawer || e.target.closest('[data-chiudi]')) chiudiDrawer();   // clic sullo sfondo oppure sulla ✕
+    });
+    drawer.addEventListener('close', function () {
+      document.body.classList.remove('drawer-aperto');
+      corpo.innerHTML = '';
+      // La tabella si e' rinnovata nel frattempo: il pulsante giusto si ritrova dall'indirizzo che aveva.
+      var torna = ultimaUrl && Array.prototype.find.call(risultati.querySelectorAll('.mon-apri'), function (x) { return x.getAttribute('hx-get') === ultimaUrl; });
+      if (torna) torna.focus({ preventScroll: true });
+    });
+    document.body.addEventListener('htmx:responseError', function (e) {
+      if (e.detail && e.detail.target === corpo) corpo.innerHTML = '<p class="mon-dr-caricamento">' + T('Impossibile caricare il dettaglio. Chiudi e riprova.') + '</p>';
+    });
+    document.body.addEventListener('htmx:sendError', function (e) {
+      if (e.detail && e.detail.target === corpo) corpo.innerHTML = '<p class="mon-dr-caricamento">' + T('Server non raggiungibile. Chiudi e riprova.') + '</p>';
+    });
+    // Evidenzia le righe arrivate dall'ultimo aggiornamento (solo in diretta).
+    function segna(primoGiro) {
+      var max = ultimoId, storico = monStorico();
+      risultati.querySelectorAll('tr[data-id]').forEach(function (tr) {
+        var id = parseInt(tr.dataset.id, 10);
+        if (id > max) max = id;
+        if (!primoGiro && !storico && !eraStorico && id > ultimoId) tr.classList.add('mon-nuova');
+      });
+      ultimoId = max; eraStorico = storico;
+    }
+    segna(true);
+    document.body.addEventListener('htmx:afterSwap', function (e) { if (e.target === risultati) { segna(false); mostra(); } });
+    // Un aggiornamento al ritorno sulla scheda.
+    document.addEventListener('visibilitychange', function () { if (!document.hidden && !monPausaManuale && !monStorico()) htmx.trigger('#mon-filtri', 'submit'); });
+    mostra();
+  })();
+</script>
+{% endblock %}

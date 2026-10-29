@@ -1,0 +1,38 @@
+{% for e in eventi %}
+{% set etichetta, classe = esito_info.get(e.esito, (e.esito.value, 'info')) %}
+<tr data-id="{{ e.id }}">
+  <td data-label="Data/ora" style="white-space:nowrap">{{ e.timestamp|ora }}</td>
+  <td data-label="Varco">{{ e.varco.nome if e.varco else (e.varco_nome or '—') }}</td>
+  <td data-label="Persona">{{ (e.persona.nome + ' ' + e.persona.cognome) if e.persona else '—' }}</td>
+  <td data-label="Credenziale"><code>{{ e.media_codice or '—' }}</code></td>
+  <td data-label="Esito">
+    <span class="badge {{ classe }}"{% if e.dettaglio %} title="{{ e.dettaglio }}"{% endif %}>{{ etichetta }}</span>
+    {% if e.allarme %}<span class="badge err" style="margin-left:0.3rem">{{ t("Allarme") }}</span>{% endif %}
+    {% if e.media_codice and e.media_codice in assegnabili and e.esito.value == 'negato_credenziale_sconosciuta' %}
+    <details class="mon-assegna">
+      <summary>{{ t("Assegna a una persona") }}</summary>
+      <form method="post" action="/media/assegna">
+        <input type="hidden" name="codice" value="{{ e.media_codice }}">
+        <input type="hidden" name="redirect_to" value="/monitoraggio">
+        <select name="persona_id" required aria-label="{{ t('Persona a cui assegnare %(p1)s', p1=e.media_codice) }}">
+          <option value="">{{ t("Scegli la persona…") }}</option>
+          {% for pid, etichetta_p in tutte_le_persone %}<option value="{{ pid }}">{{ etichetta_p }}</option>{% endfor %}
+        </select>
+        <button type="submit">{{ t("Assegna") }}</button>
+      </form>
+    </details>
+    {% endif %}
+  </td>
+  <td class="mon-azione">
+    {% if e.esito.value not in ('apertura_remota', 'porta_forzata', 'porta_lasciata_aperta', 'apertura_comando_esterno', 'ingresso_attivato', 'uscita_azionata') %}
+    <button type="button" class="mon-apri" hx-get="/eventi/{{ e.id }}/perche" hx-target="#mon-dr-corpo" hx-swap="innerHTML"
+            aria-label="{{ t('Apri il dettaglio e il motivo di questo passaggio') }}" title="{{ t('Dettaglio e motivo') }}"><span class="mon-apri-testo">{{ t("Perché?") }}</span><span class="mon-apri-freccia" aria-hidden="true">&#8250;</span></button>
+    {% endif %}
+  </td>
+</tr>
+{% else %}
+<tr><td colspan="6">
+  {% from "_macros.html" import vuoto %}
+  {{ vuoto(t('Nessun passaggio da mostrare'), t('Appena un badge viene letto a un varco il passaggio compare qui. Se hai attivato dei filtri, prova ad azzerarli.'), t('Controlla i varchi'), '/varchi') }}
+</td></tr>
+{% endfor %}

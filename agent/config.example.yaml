@@ -1,0 +1,50 @@
+# Copia questo file in config.yaml e compila con i tuoi valori reali.
+# Nessun indirizzo del backend/master da configurare: l'IP del dispositivo si scrive solo sul
+# master (pagina Varchi). Il master lo contatta in UDP unicast (porta 57990) e il dispositivo
+# impara da solo l'indirizzo del master (vedi README per i dettagli del protocollo).
+
+varco_id: 1
+# api_key: non serve: all'accensione il dispositivo si presenta e un admin preme «Abbina» nella pagina
+# Varchi. Mettila qui solo se vuoi forzarla a mano (la vedono solo gli admin).
+# api_key: "..."
+
+# Hardware del varco: SOLO come e' collegato. Cosa fa ogni lettore, uscita e ingresso
+# (apre, sirena, inseritore allarme, sensore porta, pulsante...) si sceglie dalla webapp,
+# nel popup "Funzionamento" del varco, e arriva allo slave con "Scarica dati".
+
+# Lettori badge, da 1 a 2 (stesso ordine del popup: L1, L2).
+readers:
+  - type: "serial"        # "serial" (RS485/seriale) oppure "gpio" (Wiegand su GPIO, da implementare)
+    port: "/dev/ttyUSB0"
+    baudrate: 9600
+  # - type: "serial"      # secondo lettore, per esempio sul lato opposto della stessa porta
+  #   port: "/dev/ttyUSB1"
+  #   baudrate: 9600
+
+# Uscite a relè: 2. pin = GPIO (numerazione BCM). open_duration_sec vale solo finche'
+# non arriva la prima configurazione dal master (che porta i tempi scelti nel popup).
+relays:
+  - pin: 17               # uscita 1
+    open_duration_sec: 3
+  - pin: 18               # uscita 2 (facoltativa)
+
+# Ingressi: 2. Contatto tra il pin e massa (pull-up interno). Se NC o NO, e a cosa serve
+# (sensore porta, pulsante, altro), lo decide il popup. Metti `null` per un ingresso non cablato.
+inputs:
+  - pin: 27               # ingresso 1
+  - pin: 22               # ingresso 2 (facoltativo)
+
+# Vecchio formato (un lettore `reader`, un relè `relay`, un sensore `door_sensor` con
+# closed_level e max_open_sec) e' ancora accettato: finche' il varco non e' configurato
+# dal popup Funzionamento lo slave si comporta come prima.
+
+udp:
+  # ogni quanto mandare un heartbeat al master (il backend considera il
+  # varco offline dopo 12 s di silenzio: questo valore va tenuto ben sotto)
+  heartbeat_interval_sec: 3
+
+# Cartella dove lo slave salva la cache delle credenziali, cosi' dopo un
+# riavvio riparte subito con l'ultima cache valida (relativa alla cartella da
+# cui lanci l'agent, oppure un percorso assoluto). Va su una partizione
+# scrivibile; il file e' leggibile solo dall'utente dell'agent.
+state_dir: "stato"

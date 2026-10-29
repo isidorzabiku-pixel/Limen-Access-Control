@@ -1,0 +1,42 @@
+<a href="/" class="drawer-backdrop" aria-label="{{ t('Chiudi l\'elenco') }}"></a>
+<aside class="drawer drawer-largo">
+  <div class="drawer-header">
+    <div>
+      <strong style="font-size:1.1rem">{{ t("Dentro adesso (%(p1)s)", p1=dentro|length) }}</strong>
+      <div class="muted">{{ t("Dall'ultimo passaggio sui varchi che contano le presenze.") }}</div>
+    </div>
+    <a href="/" class="drawer-close" aria-label="{{ t('Chiudi') }}">&#10005;</a>
+  </div>
+  <div class="drawer-section">
+    <div class="table-filter-row">
+      <input type="search" class="table-filter" name="filtro" autocomplete="off" data-filter-target="#dentro-table" placeholder="{{ t('Cerca per nome...') }}">
+      <a class="button ghost" href="/presenze/dentro.csv">{{ t("CSV") }}</a>
+    </div>
+    <table id="dentro-table" class="dentro-lista">
+      <tr><th>{{ t("Persona") }}</th><th>{{ t("Da") }}</th><th></th></tr>
+      {% for r in dentro %}
+      <tr>
+        <td>{{ r.persona.nome }} {{ r.persona.cognome }}{% if r.persona.ospite %} <span class="badge info">{{ t("ospite") }}</span>{% endif %}</td>
+        <td style="white-space:nowrap">
+          {{ r.da|ora('%d/%m %H:%M') if r.da else '—' }}
+          {% if r.sospetto %}<span class="badge warning" title="{{ t('Dentro da oltre %(p1)s ore: forse l\'uscita non è stata registrata', p1=soglia_ore) }}">{{ t("uscita mancante?") }}</span>{% endif %}
+        </td>
+        <td style="text-align:right">
+          <form method="post" action="/presenze/{{ r.persona.id }}/fuori" class="inline"><button type="submit" class="ghost" style="white-space:nowrap" title="{{ t('Toglila dall\'elenco se è uscita senza strisciare il badge') }}">{{ t("Segna fuori") }}</button></form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="3" class="muted" style="padding:1rem 0">{{ t("Nessuno risulta dentro.") }}</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+</aside>
+<style>
+  @media (max-width:720px) {
+    .dentro-lista tr:first-child { display:none; }
+    .dentro-lista tr { display:grid; grid-template-columns:1fr auto; gap:0.1rem 0.6rem; align-items:center; padding:0.5rem 0; border-bottom:1px solid var(--border); }
+    .dentro-lista td { display:block; padding:0; border:0; }
+    .dentro-lista td:nth-child(2) { grid-column:1; color:var(--muted); font-size:0.82rem; }
+    .dentro-lista td:nth-child(3) { grid-column:2; grid-row:1 / span 2; }
+  }
+</style>

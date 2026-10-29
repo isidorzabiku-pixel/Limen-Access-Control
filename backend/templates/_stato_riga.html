@@ -1,0 +1,8 @@
+<div class="stato-riga">
+  <span class="badge {{ 'ok' if c.livello == 'ok' else ('warning' if c.livello == 'warning' else 'err') }}">{{ 'ok' if c.livello == 'ok' else (t('attenzione') if c.livello == 'warning' else t('problema')) }}</span>
+  <div class="stato-testo">
+    <strong>{{ c.titolo }}</strong>
+    <div>{{ c.dettaglio }}</div>
+  </div>
+  {% if c.azione and (not c.azione[2] or user.is_admin) %}<a href="{{ c.azione[1] }}" class="muted" style="white-space:nowrap">{{ c.azione[0] }} &rarr;</a>{% endif %}
+</div>

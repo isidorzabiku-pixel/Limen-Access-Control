@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% from "_macros.html" import aiuto %}
+{% block title %}{{ t("Permessi di %(p1)s %(p2)s", p1=persona.nome, p2=persona.cognome) }}{% endblock %}
+{% block content %}
+<p class="muted" style="margin:0 0 0.4rem"><a href="/persone?apri={{ persona.id }}">&larr; {{ persona.nome }} {{ persona.cognome }}</a></p>
+<header class="page-head"><h1>{{ t("Permessi effettivi") }}{% call aiuto() %}{{ t("Dove %(p1)s può entrare, valutato", p1=persona.nome) }} <strong>{% if simulato %}{{ t("il %(p1)s", p1=quando|ora('%d/%m/%Y alle %H:%M')) }}{% else %}{{ t("adesso") }}{% endif %}</strong>.{% endcall %}</h1></header>
+
+<form method="get" class="card" style="display:flex; gap:0.6rem; align-items:flex-end; flex-wrap:wrap">
+  <label class="muted" style="font-size:0.78rem">{{ t("E se provasse a entrare il") }}<br>
+    <input type="datetime-local" name="quando" value="{{ quando_input }}">
+  </label>
+  <button type="submit" class="ghost">{{ t("Simula") }}</button>
+  {% if simulato %}<a href="/persone/{{ persona.id }}/permessi" class="muted">{{ t("Torna ad adesso") }}</a>{% endif %}
+</form>
+
+{% if not persona.attivo %}
+<div class="card" style="border-color:var(--err)">{{ persona.nome }} e' <strong>{{ t("sospesa") }}</strong>{{ t(": nessun badge apre nessun varco finche' non viene riattivata.") }}</div>
+{% elif not (persona.media|selectattr('attivo')|list) %}
+<div class="card" style="border-color:var(--warning)">{{ t("%(p1)s non ha nessun badge attivo: non puo' aprire nulla.", p1=persona.nome) }}</div>
+{% endif %}
+
+{% for r in permessi %}
+<div class="card permesso {{ 'permesso-si' if r.consentito else 'permesso-no' }}">
+  <div class="permesso-testata">
+    <strong>{{ r.varco.nome }}</strong>
+    {% if r.consentito %}<span class="badge ok">{{ t("puo' entrare") }}</span>{% else %}<span class="badge err">{{ r.motivo }}</span>{% endif %}
+  </div>
+  {% if r.prossima_apertura %}
+  <p class="muted" style="margin:0.3rem 0">{{ t("Prossima apertura: %(p1)s", p1=r.prossima_apertura|ora('%a %d/%m alle %H:%M')) }}</p>
+  {% endif %}
+  {% if r.origini %}
+  <table>
+    <tr><th>{{ t("Regole") }}</th><th>{{ t("Assegnata da") }}</th><th>{{ t("Quando vale") }}</th></tr>
+    {% for o in r.origini %}
+    <tr>
+      <td>{{ o.policy }}</td>
+      <td class="muted">{{ o.origine }}</td>
+      <td>{{ o.fascia }}: {{ o.orari }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted" style="margin:0.3rem 0 0">{{ t("Nessuna regola su questo varco.") }}</p>
+  {% endif %}
+</div>
+{% else %}
+<p class="muted">{{ t("Nessun varco configurato.") }}</p>
+{% endfor %}
+
+<style>
+  .permesso { border-left:3px solid var(--border); }
+  .permesso-si { border-left-color: var(--ok); }
+  .permesso-no { border-left-color: var(--err); }
+  .permesso-testata { display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; margin-bottom:0.2rem; }
+</style>
+{% endblock %}

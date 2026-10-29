@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% from "_macros.html" import tag_picker, vuoto, aiuto %}
+{% block title %}{{ t("Gruppi") }}{% endblock %}
+{% block content %}
+<header class="page-head"><h1>{{ t("Gruppi") }}{% call aiuto() %}{{ t("Un gruppo riunisce persone che hanno le stesse regole.") }}{% endcall %}</h1></header>
+
+{% set errore = request.query_params.get('errore') %}
+{% if errore == 'nome_duplicato' %}
+<div class="flash-banner err" role="alert">
+  {{ t("Esiste già un gruppo con questo nome. Scegline un altro.") }}
+</div>
+{% elif errore == 'nome_vuoto' %}
+<div class="flash-banner err" role="alert">{{ t("Il gruppo deve avere un nome.") }}</div>
+{% endif %}
+{% if request.query_params.get('salvato') %}<div class="flash-banner ok" role="status">{{ t("Gruppo salvato.") }}</div>{% endif %}
+
+<details class="card card-toggle" {{ "open" if errore == 'nome_duplicato' and not modifica_id }}>
+  <summary><span class="toggle-plus">+</span> {{ t("Nuovo gruppo") }}</summary>
+  <div class="card-toggle-body">
+    <form method="post" action="/gruppi">
+      <input type="text" name="nome" placeholder="{{ t('Nome gruppo (es. Uffici)') }}" required>
+      <button type="submit">{{ t("Crea") }}</button>
+    </form>
+  </div>
+</details>
+
+{% for g in gruppi %}
+{% if g.id == modifica_id %}
+<div class="card gruppo-modifica" id="gruppo-{{ g.id }}">
+  <form action="/gruppi/{{ g.id }}/modifica" method="post">
+    <input type="hidden" name="con_policy" value="1">
+    <label class="campo-modifica">{{ t("Nome del gruppo") }}
+      <input type="text" name="nome" value="{{ g.nome }}" required maxlength="100" autofocus>
+    </label>
+    <div class="campo-modifica">
+      <span class="etichetta-campo">{{ t("Persone nel gruppo") }}{% call aiuto() %}{{ t("Chi è nel gruppo ottiene le sue regole.") }}{% endcall %}</span>
+      {{ tag_picker('persona_id', membri.selezionate, membri.disponibili, t('Nessun\'altra persona disponibile.')) }}
+    </div>
+    <div class="campo-modifica">
+      <span class="etichetta-campo">{{ t("Regole assegnate") }}{% call aiuto() %}{{ t("Valgono per tutto il gruppo. Una regola = varchi + fascia oraria.") }}{% endcall %}</span>
+      {{ tag_picker('policy_id', policy_per_gruppo[g.id].selezionate, policy_per_gruppo[g.id].disponibili,
+           t('Nessuna regola disponibile: creane una nella pagina Regole di accesso.')) }}
+    </div>
+    <div class="azioni-modifica">
+      <button type="submit">{{ t("Salva") }}</button>
+      <a class="button ghost" href="/gruppi">{{ t("Annulla") }}</a>
+    </div>
+  </form>
+</div>
+{% else %}
+<div class="card" id="gruppo-{{ g.id }}">
+  <div class="gruppo-testa">
+    <strong>{{ g.nome }}</strong>
+    <span class="muted">{{ t("1 persona") if g.persone|length == 1 else t("%(n)s persone", n=g.persone|length) }}</span>
+    <span class="gruppo-azioni">
+      <a class="button ghost" href="/gruppi?modifica={{ g.id }}#gruppo-{{ g.id }}">{{ t("Modifica") }}</a>
+      <form action="/gruppi/{{ g.id }}/delete" method="post" class="inline">
+        <button type="submit" class="danger"
+                data-conferma="{{ t('Stai per eliminare il gruppo «%(p1)s». Le persone restano, ma perdono le regole assegnate tramite questo gruppo. L\'operazione non è reversibile.', p1=g.nome) }}"
+                data-conferma-titolo="{{ t('Eliminare il gruppo?') }}"
+                data-conferma-impatto="{{ t('Persone nel gruppo: %(p1)s;Regole assegnate tramite il gruppo: %(p2)s', p1=g.persone|length, p2=g.policies|length) }}"
+                data-conferma-azione="{{ t('Elimina gruppo') }}">{{ t("Elimina") }}</button>
+      </form>
+    </span>
+  </div>
+
+  <form action="/gruppi/{{ g.id }}/policy" method="post" style="margin-top:0.85rem">
+    <p class="muted" style="margin:0 0 0.5rem">{{ t("Regole assegnate a tutte le persone del gruppo:") }}</p>
+    {{ tag_picker('policy_id', policy_per_gruppo[g.id].selezionate, policy_per_gruppo[g.id].disponibili,
+         t('Nessuna regola disponibile: creane una nella pagina Regole di accesso.')) }}
+    <button type="submit" style="margin-top:0.6rem">{{ t("Salva regole") }}</button>
+  </form>
+</div>
+{% endif %}
+{% else %}
+<div class="card">{{ vuoto(t('Ancora nessun gruppo'), t('Un gruppo riunisce più persone (es. «Uffici», «Manutenzione») così assegni le stesse regole a tutte in un colpo.'), t('Crea il primo gruppo'), pannello=True) }}</div>
+{% endfor %}
+<style>
+  .gruppo-testa { display:flex; align-items:center; gap: var(--space-3); flex-wrap:wrap; }
+  .gruppo-azioni { margin-left:auto; display:flex; gap: var(--space-2); align-items:center; }
+  .gruppo-azioni form { margin:0; }
+  .campo-modifica { display:flex; flex-direction:column; gap: var(--space-2); margin-bottom: var(--space-4); }
+  .etichetta-campo { font-size: var(--fs-sm); color: var(--muted); }
+  .azioni-modifica { display:flex; gap: var(--space-2); align-items:center; }
+  .gruppo-modifica { border-color: rgba(56,189,248,0.45); }
+</style>
+{% endblock %}

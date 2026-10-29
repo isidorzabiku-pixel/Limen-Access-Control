@@ -1,0 +1,20 @@
+{# Corpo della card "Varchi — azioni rapide": incluso sia nel primo
+   caricamento della dashboard sia nella risposta di polling htmx
+   /dashboard/varchi-live (vedi _dashboard_varchi_live.html). #}
+{% for v in varchi %}
+<div class="varco-row">
+  <span class="live-dot {{ '' if v.online else 'off' }}"></span>
+  <div>
+    <div class="varco-name">{{ v.nome }}{% if not v.attivo %} <span class="badge err">{{ t("disattivato") }}</span>{% endif %}</div>
+    <div class="varco-meta">{{ 'online' if v.online else 'offline' }}{% if v.ip_address %} &middot; {{ v.ip_address }}{% endif %}</div>
+  </div>
+  <div class="varco-actions">
+    <form class="inline" method="post" action="/varchi/{{ v.id }}/apri">
+      <input type="hidden" name="redirect_to" value="/">
+      <button type="submit" {% if not v.attivo %}disabled title="{{ t('Varco disattivato: riattivalo per poterlo aprire') }}"{% endif %}>{{ t("Apri") }}</button>
+    </form>
+  </div>
+</div>
+{% else %}
+<p class="muted">{{ t("Nessun varco configurato.") }} <a href="/varchi">{{ t("Creane uno") }}</a>.</p>
+{% endfor %}

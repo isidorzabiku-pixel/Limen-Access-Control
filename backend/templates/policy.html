@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% from "_macros.html" import vuoto, aiuto, tag_picker %}
+{% block title %}{{ t("Regole di accesso") }}{% endblock %}
+{% block content %}
+<header class="page-head"><h1>{{ t("Regole di accesso") }}{% call aiuto() %}{{ t("Una regola = varchi + fascia oraria. Assegnala a un gruppo o a una persona.") }}{% endcall %}</h1></header>
+
+{% if request.query_params.get('errore') == 'dati' %}<div class="flash-banner err" role="alert">{{ t("Scegli almeno un varco e una fascia oraria (o «Sempre»): la regola non è stata salvata.") }}</div>{% endif %}
+{% if request.query_params.get('salvata') %}<div class="flash-banner ok" role="status">{{ t("Regola salvata.") }}</div>{% endif %}
+
+<details class="card card-toggle">
+  <summary><span class="toggle-plus">+</span> {{ t("Nuova regola") }}</summary>
+  <div class="card-toggle-body">
+    <form method="post" action="/policy" class="policy-nuova">
+      <label class="campo-modifica">{{ t("Nome") }}
+        <input type="text" name="nome" placeholder="{{ t('Nome regola (opzionale)') }}" maxlength="100">
+      </label>
+      <label class="campo-modifica">{{ t("Fascia oraria") }}
+        <select name="fascia_oraria_id" required>
+          <option value="">{{ t("Scegli…") }}</option>
+          <option value="sempre">{{ t("Sempre (24 ore su 24)") }}</option>
+          {% for f in fasce %}<option value="{{ f.id }}">{{ f.nome }}</option>{% endfor %}
+        </select>
+      </label>
+      <div class="campo-modifica" style="grid-column: 1 / -1">{{ t("Varchi %(p1)s", p1=tag_picker('varco_id', [], tutti_varchi, t('Nessun varco: creane uno nella pagina Varchi.'))) }}
+      </div>
+      <div class="azioni-modifica"><button type="submit">{{ t("Crea regola") }}</button></div>
+    </form>
+  </div>
+</details>
+
+<div class="table-filter-row">
+  <input type="search" class="table-filter" name="filtro" autocomplete="off" data-filter-target="#policy-table" placeholder="{{ t('Filtra per nome, varco, fascia...') }}">
+</div>
+
+<div class="card" style="padding:0; overflow-x:auto;">
+  <table class="tabella-card" id="policy-table">
+    <tr><th>{{ t("Nome") }}</th><th>{{ t("Varchi") }}</th><th>{{ t("Fascia oraria") }}</th><th>{{ t("Stato") }}</th><th></th></tr>
+    {% for p in policies %}
+    {% if p.id == modifica_id %}
+    <tr class="riga-modifica" id="policy-{{ p.id }}">
+      <td colspan="5">
+        <form action="/policy/{{ p.id }}/modifica" method="post" class="policy-form">
+          <label class="campo-modifica">{{ t("Nome") }}
+            <input type="text" name="nome" value="{{ p.nome or '' }}" placeholder="{{ t('Nome regola (opzionale)') }}" maxlength="100" autofocus>
+          </label>
+          <div class="campo-modifica" style="grid-column: 1 / -1">{{ t("Varchi %(p1)s", p1=tag_picker('varco_id', varchi_picker[p.id].selezionati, varchi_picker[p.id].disponibili, t('Nessun altro varco disponibile.'))) }}
+          </div>
+          <label class="campo-modifica">{{ t("Fascia oraria") }}
+            <select name="fascia_oraria_id" required>
+              <option value="" {{ 'selected' if not p.fascia_oraria_id and not p.sempre }}>{{ t("Scegli…") }}</option>
+              <option value="sempre" {{ 'selected' if p.sempre }}>{{ t("Sempre (24 ore su 24)") }}</option>
+              {% for f in fasce %}<option value="{{ f.id }}" {{ 'selected' if f.id == p.fascia_oraria_id }}>{{ f.nome }}</option>{% endfor %}
+            </select>
+          </label>
+          <label class="campo-modifica">{{ t("Stato") }}
+            <select name="attiva">
+              <option value="1" {{ 'selected' if p.attiva }}>{{ t("attiva") }}</option>
+              <option value="0" {{ 'selected' if not p.attiva }}>{{ t("disattiva") }}</option>
+            </select>
+          </label>
+          <div class="azioni-modifica">
+            <button type="submit">{{ t("Salva") }}</button>
+            <a class="button ghost" href="/policy">{{ t("Annulla") }}</a>
+            {% call aiuto() %}{{ t("Vale subito per %(p1)s persone e %(p2)s gruppi; ai varchi dopo «Scarica dati». «Disattiva» la sospende senza eliminarla.", p1=p.persone|length, p2=p.gruppi|length) }}{% endcall %}
+          </div>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr>
+      <td data-label="Nome">{{ p.nome or t('Regola #%(id)s', id=p.id) }}</td>
+      <td data-label="Varchi">{{ p.nomi_varchi }}</td>
+      <td data-label="Fascia oraria">{{ p.fascia_nome }}</td>
+      <td data-label="Stato">{% if not p.completa %}<span class="badge warning" title="{{ t('%(p1)s: non concede accessi finché non la completi o la elimini', p1=t('Nessun varco') if not p.varchi else t('Nessuna fascia')) }}">{{ t("incompleta") }}</span>{% elif p.attiva %}<span class="badge ok">{{ t("attiva") }}</span>{% else %}<span class="badge err">{{ t("disattiva") }}</span>{% endif %}</td>
+      <td class="azioni-riga">
+        <a class="button ghost" href="/policy?modifica={{ p.id }}#policy-{{ p.id }}">{{ t("Modifica") }}</a>
+        <form action="/policy/{{ p.id }}/delete" method="post" class="inline">
+          <button type="submit" class="danger"
+                  data-conferma="{{ t('Stai per eliminare la regola «%(p1)s» (%(p2)s). Chi vi accede tramite un gruppo o una regola diretta perde l\'autorizzazione corrispondente. L\'operazione non è reversibile.', p1=p.nome or t('Regola #%(id)s', id=p.id), p2=p.nomi_varchi) }}"
+                  data-conferma-titolo="{{ t('Eliminare la regola?') }}"
+                  data-conferma-impatto="{{ t('Persone con questa regola diretta: %(p1)s;Gruppi che la usano: %(p2)s', p1=p.persone|length, p2=p.gruppi|length) }}"
+                  data-conferma-azione="{{ t('Elimina regola') }}">{{ t("Elimina") }}</button>
+        </form>
+      </td>
+    </tr>
+    {% endif %}
+    {% else %}
+    <tr><td colspan="5">{{ vuoto(t('Ancora nessuna regola'), t('Una regola dice dove e quando: uno o più varchi più una fascia oraria. Senza regole nessun badge apre nessun varco.'), t('Crea la prima regola'), pannello=True) }}</td></tr>
+    {% endfor %}
+  </table>
+</div>
+<style>
+  .azioni-riga { white-space:nowrap; text-align:right; }
+  .azioni-riga .button, .azioni-riga form { display:inline-block; vertical-align:middle; margin-left: var(--space-1); }
+  .riga-modifica td { background: rgba(56,189,248,0.06); }
+  .policy-form, .policy-nuova { display:grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: var(--space-3) var(--space-4); align-items:end; }
+  .campo-modifica { display:flex; flex-direction:column; gap: var(--space-1); font-size: var(--fs-sm); color: var(--muted); }
+  .campo-modifica input, .campo-modifica select { width:100%; min-width:0; }
+  .azioni-modifica { display:flex; gap: var(--space-2); align-items:center; grid-column: 1 / -1; }
+</style>
+{% endblock %}

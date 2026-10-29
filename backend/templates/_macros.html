@@ -1,0 +1,115 @@
+{# Componenti Jinja riutilizzabili. #}
+
+{#
+  tag_picker: selettore "a chip" per assegnazioni multiple (gruppi, regole...)
+  quando le opzioni possono essere decine: niente lista di checkbox da scorrere,
+  solo le voci già selezionate (come chip rimovibili) + un pulsante "+ Aggiungi"
+  che apre un menu con ricerca per scegliere le altre.
+
+  field_name: nome del campo form da inviare (es. 'gruppo_id'), invariato
+    rispetto alla vecchia checkbox-list: il backend continua a leggerlo con
+    form.getlist(field_name), nessuna modifica alle route necessaria.
+  selected: lista di dict {"id":..., "label":...} già assegnati.
+  available: lista di dict {"id":..., "label":...} non ancora assegnati.
+  empty_label: testo mostrato nel menu quando non c'è nulla da aggiungere.
+#}
+{% macro tag_picker(field_name, selected, available, empty_label=t('Nessuna opzione disponibile.')) %}
+<div class="tag-picker" data-name="{{ field_name }}">
+  <div class="tag-picker-chips">
+    {% for item in selected %}
+    <span class="tag-chip" data-value="{{ item.id }}" data-label="{{ item.label }}">
+      {{ item.label }}
+      <button type="button" class="tag-chip-remove" aria-label="{{ t('Rimuovi') }}">&times;</button>
+      <input type="checkbox" name="{{ field_name }}" value="{{ item.id }}" checked hidden>
+    </span>
+    {% endfor %}
+    {% if not selected %}<span class="tag-picker-empty">{{ t("Nessuno selezionato") }}</span>{% endif %}
+  </div>
+  <div class="tag-picker-add-wrap">
+    <button type="button" class="tag-picker-add">{{ t("+ Aggiungi") }}</button>
+    <div class="tag-picker-dropdown">
+      <input type="search" class="tag-picker-search" name="cerca_tag" autocomplete="off" placeholder="Cerca...">
+      <div class="tag-picker-options">
+        {% for item in available %}
+        <div class="tag-picker-option" data-value="{{ item.id }}" data-label="{{ item.label }}">{{ item.label }}</div>
+        {% endfor %}
+      </div>
+      <p class="tag-picker-option-empty muted" style="margin:0; padding:0.4rem 0.3rem; {{ 'display:none' if available else '' }}">{{ empty_label }}</p>
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+{#
+  scarica_dati_button: bottone "Scarica dati ai dispositivi" — manda subito
+  (via UDP, a ciascun dispositivo) la cache di autorizzazioni a tutti i varchi, invece di
+  aspettare il giro automatico ogni 6h, e aspetta fino a 2s la conferma di
+  consegna reale (pacchetto CA di risposta dello slave) prima di mostrare
+  l'esito: "inviato" non è "ricevuto", vedi backend/services/udp_agent.py.
+  Mostra un piccolo banner leggendo ?scaricato=...&confermati=N&totali=M
+  dalla query string (impostati dal redirect della route POST
+  /varchi/scarica-dati): niente JS, stesso pattern già usato per gli altri
+  messaggi di esito in questa webapp.
+  redirect_to: path su cui tornare dopo l'invio (così il bottone funziona
+  identico su Varchi, Persone e Dashboard).
+#}
+{% macro scarica_dati_button(request, redirect_to) %}
+{% set esito = request.query_params.get('scaricato') %}
+{% set confermati = request.query_params.get('confermati', '0') %}
+{% set totali = request.query_params.get('totali', '0') %}
+{% if esito == 'ok' %}
+<div class="flash-banner ok" role="status">
+  {{ t("Dati confermati ricevuti da tutti i %(p1)s varchi.", p1=totali) }}
+</div>
+{% elif esito == 'parziale' %}
+<div class="flash-banner warn" role="status">
+  {{ t("Confermati solo %(p1)s di %(p2)s varchi (entro 2s): gli altri sono probabilmente offline o irraggiungibili. Controlla lo stato in tabella.", p1=confermati, p2=totali) }}
+</div>
+{% elif esito == 'nessuno' %}
+<div class="flash-banner err" role="alert">
+  {{ t("Dati mandati ma nessun varco ha confermato la ricezione entro 2s: probabilmente tutti offline o irraggiungibili.") }}
+</div>
+{% elif esito == 'vuoto' %}
+<div class="flash-banner info" role="status">
+  {{ t("Nessun varco configurato: niente da mandare.") }}
+</div>
+{% elif esito == 'err' %}
+<div class="flash-banner err" role="alert">
+  {{ t("Invio dati ai dispositivi non riuscito. Riprova.") }}
+</div>
+{% endif %}
+<form method="post" action="/varchi/scarica-dati" style="display:block; margin:0 0 1rem;">
+  <input type="hidden" name="redirect_to" value="{{ redirect_to }}">
+  <button type="submit">{{ t("Scarica dati ai dispositivi") }}</button>
+</form>
+{% endmacro %}
+
+{# Stato vuoto: cosa manca, perche' e' normale, e il passo successivo come pulsante.
+   azione_pannello=True apre il pannello "+ Nuovo ..." della pagina (come il tasto n);
+   altrimenti azione_href porta altrove. #}
+{% macro vuoto(titolo, testo, azione=None, href=None, pannello=False, icona="") %}
+<div class="vuoto">
+  <div class="vuoto-titolo">{{ titolo }}</div>
+  <p class="muted" style="margin:0.25rem 0 0">{{ testo }}</p>
+  {% if azione %}
+    {% if pannello %}<button type="button" data-apri-pannello style="margin-top:0.8rem">{{ azione }}</button>
+    {% else %}<a class="button" href="{{ href }}" style="margin-top:0.8rem">{{ azione }}</a>{% endif %}
+  {% endif %}
+</div>
+{% endmacro %}
+
+
+{# Icona "i" con la spiegazione che compare al passaggio del mouse, al focus da tastiera o al tocco.
+   Testo semplice:   {{ aiuto(t("Spiegazione...")) }}
+   Con grassetti/link: {% call aiuto() %}Spiegazione <strong>...</strong>{% endcall %}  #}
+{% macro aiuto(testo="", etichetta="") %}<button type="button" class="info" aria-label="{{ t('Informazioni su %(e)s', e=t(etichetta)) if etichetta else t('Informazioni') }}" aria-expanded="false">i</button><span class="info-testo" hidden>{% if caller %}{{ caller() }}{% else %}{{ testo }}{% endif %}</span>{% endmacro %}
+
+{# Icona del tipo di credenziale (badge, PIN, UHF, BLE, QR): elenco Persone e dettaglio. #}
+{% macro icona_cred(t) -%}
+{%- if t == 'rfid' -%}<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3.5" width="12" height="9" rx="1.8"/><path d="M5 7.5h3M5 10h5"/></svg>
+{%- elif t == 'pin' -%}<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="4.5" cy="4.5" r=".7" fill="currentColor"/><circle cx="8" cy="4.5" r=".7" fill="currentColor"/><circle cx="11.5" cy="4.5" r=".7" fill="currentColor"/><circle cx="4.5" cy="8" r=".7" fill="currentColor"/><circle cx="8" cy="8" r=".7" fill="currentColor"/><circle cx="11.5" cy="8" r=".7" fill="currentColor"/><circle cx="8" cy="11.5" r=".7" fill="currentColor"/></svg>
+{%- elif t == 'uhf' -%}<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M3 8a5 5 0 0 1 5-5M3 11a8 8 0 0 1 8-8M3 14a11 11 0 0 1 11-11" transform="translate(0,-1)"/><circle cx="4" cy="12" r="1.2" fill="currentColor" stroke="none"/></svg>
+{%- elif t == 'ble' -%}<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 5l7 6-3.5 3V2l3.5 3-7 6"/></svg>
+{%- elif t == 'qr' -%}<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="4.5" height="4.5"/><rect x="9.5" y="2" width="4.5" height="4.5"/><rect x="2" y="9.5" width="4.5" height="4.5"/><path d="M9.5 9.5h2v2M14 9.5v4.5h-4.5" stroke-linecap="round"/></svg>
+{%- endif -%}
+{%- endmacro %}

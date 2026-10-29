@@ -1,0 +1,488 @@
+{% extends "base.html" %}
+{% from "_macros.html" import tag_picker, scarica_dati_button, vuoto, aiuto, icona_cred %}
+{% block title %}{{ t('Visitatori') if visitatori else t('Persone') }}{% endblock %}
+{% block content %}
+{% set ns = namespace(senza_badge=0) %}
+{% for p in persone %}
+  {% if not (p.media|selectattr('attivo')|list) %}{% set ns.senza_badge = ns.senza_badge + 1 %}{% endif %}
+{% endfor %}
+<header class="page-head">
+  <h1>{{ t('Visitatori') if visitatori else t('Persone') }}{% call aiuto() %}{% if visitatori %}{{ t("Chi entra solo per un periodo. La scadenza è obbligatoria: dopo, i suoi badge non funzionano.") }}{% else %}{{ t("Premi «Proprietà» per gruppi, regole e badge di ogni persona.") }}{% endif %}{% endcall %}</h1>
+  <span class="badge info">{{ t("%(p1)s tot", p1=persone|length) }}</span>
+  {% if ns.senza_badge > 0 %}<span class="badge warning">{{ t("%(p1)s senza credenziali attive", p1=ns.senza_badge) }}</span>{% endif %}
+</header>
+
+{{ scarica_dati_button(request, base) }}
+
+{% set errore_persone = request.query_params.get('errore') %}
+{% if errore_persone == 'badge_duplicato' %}
+<div class="flash-banner err" role="alert">
+  {{ t("Questo codice badge è già associato a un'altra credenziale (o alla stessa persona): ogni badge può appartenere a una sola persona.") }}
+</div>
+{% elif errore_persone == 'scadenza' %}
+<div class="flash-banner err" role="alert">{{ t("Indica fino a quando il visitatore può entrare: la scadenza è obbligatoria.") }}</div>
+{% elif errore_persone == 'validita_invertita' %}
+<div class="flash-banner err" role="alert">{{ t("La fine della validità è precedente all'inizio: controlla le date.") }}</div>
+{% elif errore_persone == 'badge_vuoto' %}
+<div class="flash-banner err" role="alert">{{ t("Il codice della credenziale non può essere vuoto.") }}</div>
+{% elif errore_persone == 'pin_non_valido' %}
+<div class="flash-banner err" role="alert">{{ t("Il PIN deve essere un numero di 4-10 cifre.") }}</div>
+{% endif %}
+
+<style>
+  .persona-row {
+    display:grid; grid-template-columns:minmax(12rem, 1.1fr) minmax(12rem, 2fr) auto; align-items:center; gap:0.6rem 1.2rem;
+    padding:0.7rem 1.25rem; border-bottom:1px solid #334155; transition: background-color 0.12s ease;
+  }
+  .persona-row:last-child { border-bottom:none; }
+  .persona-row:hover { background: rgba(255,255,255,0.025); }
+  .persona-nome { font-weight:600; color: var(--text); }
+  .persona-meta { display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap; justify-content:flex-end; }
+  .persona-check { width:17px; height:17px; accent-color: var(--accent); cursor:pointer; flex-shrink:0; }
+  .persona-left { display:flex; align-items:center; gap:0.85rem; min-width:0; }
+  .persona-sotto { display:flex; gap:0.35rem; flex-wrap:wrap; margin-top:0.25rem; }
+
+  /* Credenziali sulla riga: una chip per titolo di accesso */
+  .cred { display:flex; flex-wrap:wrap; gap:0.4rem; align-items:center; min-width:0; }
+  .chip { display:inline-flex; align-items:center; gap:0.4rem; max-width:100%; padding:0.22rem 0.6rem 0.22rem 0.45rem; background:rgba(255,255,255,0.04); border:1px solid var(--border); border-radius:8px; font-size:0.82rem; white-space:nowrap; }
+  .chip svg { flex-shrink:0; color:var(--accent); }
+  .chip .tipo { color:var(--muted); font-weight:500; }
+  .chip code { font-size:0.78rem; letter-spacing:0.02em; overflow:hidden; text-overflow:ellipsis; }
+  .chip.pin code { letter-spacing:0.18em; }
+  .chip.spenta { opacity:0.55; } .chip.spenta code { text-decoration:line-through; } .chip.spenta svg { color:var(--muted); }
+  .chip .nota-chip { color:var(--warning); font-size:0.75rem; }
+  .chip.piu { color:var(--muted); background:transparent; border-style:dashed; }
+  .senza-cred { color:var(--warning); font-size:0.85rem; display:inline-flex; align-items:center; gap:0.4rem; }
+  body.cred-compatta .chip code, body.cred-compatta .chip .nota-chip { display:none; }
+  body.cred-compatta .chip .tipo { color:var(--text); }
+
+  /* Filtri per tipo e scelta della vista */
+  .filtri-cred { display:flex; gap:0.45rem; flex-wrap:wrap; margin:0 0 1rem; }
+  .filtro { display:inline-flex; align-items:center; gap:0.4rem; color:var(--muted); border:1px solid var(--border); border-radius:999px; padding:0.28rem 0.75rem; font-size:0.85rem; font-weight:500; text-decoration:none; }
+  .filtro:hover { color:var(--text); border-color:var(--muted); }
+  .filtro[aria-current="true"] { background:var(--accent-dim); color:var(--accent); border-color:rgba(56,189,248,0.5); }
+  .filtro.senza[aria-current="true"] { background:rgba(251,191,36,0.14); color:var(--warning); border-color:rgba(251,191,36,0.5); }
+  .filtro .n { font-variant-numeric:tabular-nums; opacity:0.75; font-size:0.8rem; }
+  .filtro svg { color:inherit; }
+  .vista-cred { display:inline-flex; padding:2px; background:var(--bg); border:1px solid var(--border); border-radius:8px; margin-left:auto; }
+  .vista-cred button { background:transparent; color:var(--muted); border:0; border-radius:6px; padding:0.3rem 0.8rem; font-size:0.85rem; font-weight:600; }
+  .vista-cred button[aria-pressed="true"] { background:var(--card-float); color:var(--text); }
+  @media (max-width: 760px) {
+    .persona-row { grid-template-columns:1fr; }
+    .persona-meta { justify-content:flex-start; }
+    .vista-cred { margin-left:0; }
+  }
+
+  /* Elenco delle credenziali sconosciute: colonne allineate qualunque sia la lunghezza del codice. */
+  .sconosciute-lista { display:grid; grid-template-columns:max-content minmax(0,1fr) minmax(11rem,15rem) auto auto; column-gap:0.75rem; row-gap:0.5rem; align-items:center; }
+  .sconosciuta { display:grid; grid-template-columns:subgrid; grid-column:1 / -1; align-items:center; }
+  .sc-info { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sc-persona { width:100%; min-width:0; }
+  @media (max-width: 760px) {
+    .sconosciute-lista { grid-template-columns:1fr; row-gap:0.9rem; }
+    .sconosciuta { grid-template-columns:1fr 1fr; gap:0.4rem 0.5rem; padding-bottom:0.9rem; border-bottom:1px solid var(--border); }
+    .sconosciuta:last-child { padding-bottom:0; border-bottom:0; }
+    .sc-codice, .sc-info, .sc-persona { grid-column:1 / -1; }
+    .sc-info { white-space:normal; }
+  }
+  .search-row { display:flex; gap:0.5rem; align-items:center; margin-bottom:1rem; flex-wrap:wrap; }
+  .search-row input[type=search] { flex:1 1 14rem; min-width:0; }
+  .search-row input[type="search"] { max-width:360px; }
+
+  .list-toolbar { display:flex; align-items:center; gap:0.6rem; padding:0.6rem 1.25rem; border-bottom:1px solid #334155; font-size:0.85rem; }
+
+  .bulk-toolbar {
+    position: fixed; left: calc(var(--sidebar-w) + 1.5rem); right: 1.5rem; bottom: 1.25rem;
+    background: var(--card-raised); border:1px solid #334155; border-radius:12px;
+    padding: 0.7rem 1rem; display:flex; align-items:center; gap:0.65rem; flex-wrap:wrap;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.45); z-index:30;
+    transform: translateY(130%); opacity:0; pointer-events:none;
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
+  }
+  .bulk-toolbar.visible { transform: translateY(0); opacity:1; pointer-events:auto; }
+  @media (max-width: 720px) { .bulk-toolbar { left:1rem; right:1rem; bottom:4.5rem; } }
+</style>
+
+{% if visitatori %}
+<details class="card card-toggle" {{ 'open' if errore_persone in ('scadenza', 'validita_invertita') }}>
+  <summary><span class="toggle-plus">+</span> {{ t("Nuovo visitatore") }}</summary>
+  <div class="card-toggle-body">
+    <form method="post" action="/visitatori" class="nuovo-visitatore">
+      <input type="text" name="nome" placeholder="{{ t('Nome') }}" required>
+      <input type="text" name="cognome" placeholder="{{ t('Cognome') }}" required>
+      <input type="text" name="codice" placeholder="{{ t('Codice badge (opzionale)') }}">
+      <label class="muted">{{ t("Dal (opzionale)") }}<br><input type="datetime-local" name="valido_da"></label>
+      <label class="muted">{{ t("Fino al") }}<br><input type="datetime-local" name="valido_a" id="vis-scadenza" required></label>
+      <button type="submit">{{ t("Aggiungi") }}</button>
+    </form>
+    <script>
+      (function () {
+        var c = document.getElementById('vis-scadenza');
+        if (c && !c.value) { var d = new Date(); d.setHours(23, 59, 0, 0); var p = function (n) { return String(n).padStart(2, '0'); };
+          c.value = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes()); }
+      })();
+    </script>
+  </div>
+</details>
+{% else %}
+<details class="card card-toggle">
+  <summary><span class="toggle-plus">+</span> {{ t("Nuova persona") }}</summary>
+  <div class="card-toggle-body">
+    <form method="post" action="/persone">
+      <input type="text" name="nome" placeholder="{{ t('Nome') }}" required>
+      <input type="text" name="cognome" placeholder="{{ t('Cognome') }}" required>
+      <input type="email" name="email" placeholder="{{ t('Email (opzionale)') }}">
+      <input type="text" name="codice" placeholder="{{ t('Codice badge (opzionale)') }}">
+      <button type="submit">{{ t("Aggiungi") }}</button>
+    </form>
+    <p style="margin:0.6rem 0 0" class="muted"><a href="/persone/importa">{{ t("Importa da CSV") }}</a> {{ t("una lista di persone.") }}</p>
+  </div>
+</details>
+{% endif %}
+
+{% if sconosciute %}
+<div class="card" id="sconosciute">
+  <h2 style="margin:0 0 0.7rem; font-size:1rem">{{ t("Credenziali lette e non riconosciute") }}{% call aiuto() %}{{ t("Badge letti ai varchi ma non assegnati. Assegnali a una persona o premi «Ignora».") }}{% endcall %}</h2>
+  <div class="sconosciute-lista">
+  {% for s in sconosciute %}
+    <div class="sconosciuta">
+      <form id="ass-{{ loop.index }}" method="post" action="/media/assegna" hidden>
+        <input type="hidden" name="codice" value="{{ s.codice }}">
+        <input type="hidden" name="redirect_to" value="{{ base }}">
+      </form>
+      <form id="ign-{{ loop.index }}" method="post" action="/media/ignora" hidden>
+        <input type="hidden" name="codice" value="{{ s.codice }}">
+        <input type="hidden" name="redirect_to" value="{{ base }}">
+      </form>
+      <code class="sc-codice">{{ s.codice }}</code>
+      <span class="muted sc-info">{{ s.timestamp|ora("%d/%m %H:%M") }} &middot; {{ s.varco }}{% if s.volte > 1 %} {{ t("· %(p1)s volte", p1=s.volte) }}{% endif %}</span>
+      <select name="persona_id" form="ass-{{ loop.index }}" required class="sc-persona" aria-label="{{ t('Persona a cui assegnare %(p1)s', p1=s.codice) }}">
+        <option value="">{{ t("Assegna a…") }}</option>
+        {% for pid, etichetta in tutte_le_persone %}<option value="{{ pid }}">{{ etichetta }}</option>{% endfor %}
+      </select>
+      <button type="submit" form="ass-{{ loop.index }}" class="ghost sc-azione">{{ t("Assegna") }}</button>
+      <button type="submit" form="ign-{{ loop.index }}" class="ghost sc-azione" aria-label="{{ t('Ignora la credenziale %(p1)s', p1=s.codice) }}">{{ t("Ignora") }}</button>
+    </div>
+  {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<form class="search-row" method="get" action="{{ base }}">
+  <input type="search" name="q" value="{{ ricerca }}" placeholder="{{ t('Cerca per nome, gruppo o numero di una credenziale...') }}" aria-label="{{ t('Cerca') }}">
+  {% if tipo_filtro %}<input type="hidden" name="tipo" value="{{ tipo_filtro }}">{% endif %}
+  <button type="submit" class="ghost">{{ t("Cerca") }}</button>
+  {% if ricerca %}<a href="{{ base }}{{ '?tipo=' ~ tipo_filtro if tipo_filtro }}" class="muted">{{ t("Pulisci ricerca") }}</a>{% endif %}
+  <span class="vista-cred" role="group" aria-label="{{ t('Vista delle credenziali') }}"><button type="button" data-vista="dettaglio" aria-pressed="true">{{ t("Dettaglio") }}</button><button type="button" data-vista="compatta" aria-pressed="false">{{ t("Compatta") }}</button></span>
+</form>
+
+<nav class="filtri-cred" aria-label="{{ t('Filtra per tipo di credenziale') }}">
+  {% set qs = ('&q=' ~ ricerca|urlencode) if ricerca else '' %}
+  <a class="filtro" href="{{ base }}{{ '?q=' ~ ricerca|urlencode if ricerca }}" {% if not tipo_filtro %}aria-current="true"{% endif %}>{{ t("Tutti") }} <span class="n">{{ conteggi_cred.tutti }}</span></a>
+  {% for tc, et in tipi_cred if conteggi_cred.tipi[tc] %}
+  <a class="filtro" href="{{ base }}?tipo={{ tc }}{{ qs }}" {% if tipo_filtro == tc %}aria-current="true"{% endif %}>{{ icona_cred(tc) }}{{ et }} <span class="n">{{ conteggi_cred.tipi[tc] }}</span></a>
+  {% endfor %}
+  <a class="filtro senza" href="{{ base }}?tipo=senza{{ qs }}" {% if tipo_filtro == 'senza' %}aria-current="true"{% endif %}>{{ t("Senza credenziali") }} <span class="n">{{ conteggi_cred.senza }}</span></a>
+</nav>
+
+{% if visitatori %}
+<form method="post" action="/visitatori/elimina-scaduti" style="margin:0 0 0.8rem">
+  <button type="submit" class="ghost"
+          data-conferma="{{ t('Verranno eliminati i visitatori la cui scadenza è già passata, con i loro badge. Lo storico dei passaggi resta.') }}"
+          data-conferma-titolo="{{ t('Eliminare i visitatori scaduti?') }}" data-conferma-azione="{{ t('Elimina scaduti') }}">{{ t("Elimina i visitatori scaduti") }}</button>
+  {% if request.query_params.get('eliminati') is not none %}<span class="muted" style="margin-left:0.6rem">{{ t("%(p1)s eliminati.", p1=request.query_params.get('eliminati')) }}</span>{% endif %}
+</form>
+{% endif %}
+
+<!-- Form vuoto, solo per raccogliere le checkbox selezionate tramite l'attributo
+     form="bulk-form" sui singoli input: evita di dover annidare un form dentro
+     un altro form (non valido in HTML), visto che ogni riga ha già il suo form "Elimina". -->
+<form id="bulk-form" method="post"><input type="hidden" name="ritorno" value="{{ base }}"></form>
+
+<div class="card" style="padding:0;">
+  {% if persone %}
+  <div class="list-toolbar">
+    <input type="checkbox" id="seleziona-tutto" name="seleziona_tutto" class="persona-check">
+    <label for="seleziona-tutto" class="muted">{{ t("Seleziona tutto") }}</label>
+  </div>
+  {% endif %}
+  {% for p in persone %}
+  {% set r = riassunti[p.id] %}
+  <div class="persona-row">
+    <div class="persona-left">
+      <input type="checkbox" name="persona_ids" value="{{ p.id }}" class="persona-check" form="bulk-form">
+      <div style="min-width:0">
+        <strong class="persona-nome">{{ p.nome }} {{ p.cognome }}</strong>
+        <div class="persona-sotto">
+          {% if not p.attivo %}<span class="badge err">{{ t("sospesa") }}</span>{% endif %}
+          {% if visitatori and p.valido_a %}<span class="badge {{ 'err' if p.valido_a < adesso else 'warning' }}">{{ t('scaduto') if p.valido_a < adesso else t('fino al') }} {{ p.valido_a|ora('%d/%m %H:%M') }}</span>{% elif visitatori %}<span class="badge err">{{ t("senza scadenza") }}</span>{% endif %}
+          {% for g in p.gruppi %}<span class="badge info">{{ g.nome }}</span>{% endfor %}
+        </div>
+      </div>
+    </div>
+    <div class="cred">
+      {% for c in r.chips %}
+      <span class="chip {{ c.tipo }}{{ t(' spenta') if c.spenta }}" title="{{ c.etichetta }}{{ t(' (il PIN si vede solo nel dettaglio della persona)') if c.tipo == 'pin' else ' ' ~ c.codice }}{{ t(' – disattivata o scaduta') if c.spenta }}">
+        {{ icona_cred(c.tipo) }}<span class="tipo">{{ c.etichetta }}</span><code>{{ c.codice }}</code>
+        {% if c.scade %}<span class="nota-chip">{{ t("scade %(p1)s", p1=c.scade|ora('%d/%m')) }}</span>{% elif c.non_ancora %}<span class="nota-chip">{{ t("non ancora valida") }}</span>{% endif %}
+      </span>
+      {% else %}
+      <span class="senza-cred"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M8 2.5l6 10.5H2z" stroke-linejoin="round"/><path d="M8 7v3M8 11.6v.1"/></svg>{{ t("Nessuna credenziale") }}</span>
+      {% endfor %}
+      {% if r.extra %}<span class="chip piu" title="{{ r.extra|join(', ') }}">+{{ r.extra|length }}</span>{% endif %}
+    </div>
+    <div class="persona-meta">
+      <a href="{{ base }}?apri={{ p.id }}" class="button ghost" aria-label="{{ t('Apri le proprietà di %(p1)s %(p2)s', p1=p.nome, p2=p.cognome) }}">{{ t("Proprietà ›") }}</a>
+      <form action="/persone/{{ p.id }}/delete" method="post" class="inline">
+        <button type="submit" class="danger"
+                data-conferma="{{ t('Stai per eliminare %(p1)s %(p2)s. L\'operazione non è reversibile.', p1=p.nome, p2=p.cognome) }}"
+                data-conferma-titolo="{{ t('Eliminare la persona?') }}"
+                data-conferma-impatto="{{ t('Credenziali eliminate: %(p1)s;Gruppi di appartenenza lasciati: %(p2)s;Regole dirette rimosse: %(p3)s;Lo storico dei passaggi resta', p1=p.media|length, p2=p.gruppi|length, p3=p.policy_dirette|length) }}"
+                data-conferma-azione="{{ t('Elimina persona') }}">{{ t("Elimina") }}</button>
+      </form>
+    </div>
+  </div>
+  {% else %}
+  {% if tipo_filtro and not ricerca %}
+  {{ vuoto(t('Nessuna persona con questo filtro'), t('Nessuno ha credenziali di questo tipo (o nessuno è senza credenziali).'), t('Mostra tutti'), base) }}
+  {% elif ricerca %}
+  {{ vuoto(t('Nessuna persona trovata'), t('Nessun risultato per "%(q)s": controlla l\'ortografia o cerca per gruppo.', q=ricerca), t('Azzera la ricerca'), base) }}
+  {% else %}
+  {% if visitatori %}{{ vuoto(t('Nessun visitatore'), t('Aggiungi chi entra per un periodo: scegli fino a quando può entrare e dagli un badge.'), t('Aggiungi il primo visitatore'), pannello=True) }}{% else %}{{ vuoto(t('Ancora nessuna persona'), t('Aggiungi chi deve entrare: poi gli dai un badge, lo metti in un gruppo e gli assegni le regole di accesso. Hai già un elenco? Importalo da CSV.'), t('Aggiungi la prima persona'), pannello=True) }}{% endif %}
+  {% endif %}
+  {% endfor %}
+</div>
+
+<div id="bulk-toolbar" class="bulk-toolbar">
+  <span id="bulk-count" class="muted">{{ t("0 selezionate") }}</span>
+  <select name="gruppo_id" form="bulk-form">
+    <option value="">{{ t("Aggiungi al gruppo…") }}</option>
+    {% for g in gruppi %}<option value="{{ g.id }}">{{ g.nome }}</option>{% endfor %}
+  </select>
+  <button type="submit" form="bulk-form" formaction="/persone/selezione/gruppo">{{ t("Applica") }}</button>
+  <select name="anti_passback" form="bulk-form" aria-label="Anti-passback">
+    <option value="">{{ t("Anti-passback…") }}</option>
+    <option value="1">{{ t("Attiva") }}</option>
+    <option value="0">{{ t("Disattiva") }}</option>
+  </select>
+  <button type="submit" form="bulk-form" formaction="/persone/selezione/anti-passback" class="ghost">{{ t("Applica") }}</button>
+  <button
+    type="submit" form="bulk-form" formaction="/persone/selezione/elimina" class="danger"
+    data-conferma="{{ t('Stai per eliminare le persone selezionate, con i loro badge e le regole dirette. L\'operazione non è reversibile.') }}"
+    data-conferma-titolo="{{ t('Eliminare le persone selezionate?') }}"
+    data-conferma-impatto="{{ t('{n|persona selezionata|persone selezionate};Lo storico dei passaggi resta') }}"
+    data-conferma-azione="{{ t('Elimina selezionate') }}" data-conferma-senza-selezione="{{ t('Seleziona almeno una persona.') }}"
+  >{{ t("Elimina selezionate") }}</button>
+</div>
+
+<script>
+  // Vista Dettaglio/Compatta dell'elenco: preferenza solo di questo browser.
+  (function () {
+    function imposta(v) {
+      document.body.classList.toggle('cred-compatta', v === 'compatta');
+      document.querySelectorAll('[data-vista]').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.vista === v ? 'true' : 'false'); });
+    }
+    var v = 'dettaglio';
+    try { v = localStorage.getItem('persone-vista') === 'compatta' ? 'compatta' : 'dettaglio'; } catch (e) {}
+    imposta(v);
+    document.addEventListener('click', function (e) {
+      var b = e.target.closest && e.target.closest('[data-vista]');
+      if (!b) return;
+      imposta(b.dataset.vista);
+      try { localStorage.setItem('persone-vista', b.dataset.vista); } catch (err) {}
+    });
+  })();
+</script>
+<script>
+  (function () {
+    var form = document.getElementById('bulk-form');
+    var toolbar = document.getElementById('bulk-toolbar');
+    var contatore = document.getElementById('bulk-count');
+    var selezionaTutto = document.getElementById('seleziona-tutto');
+
+    function checkbox() { return document.querySelectorAll('input[name="persona_ids"]'); }
+
+    function aggiornaSelezione() {
+      var selezionate = Array.prototype.filter.call(checkbox(), function (c) { return c.checked; });
+      contatore.textContent = selezionate.length + (selezionate.length === 1 ? ' selezionata' : ' selezionate');
+      toolbar.classList.toggle('visible', selezionate.length > 0);
+      if (selezionaTutto) {
+        selezionaTutto.checked = selezionate.length > 0 && selezionate.length === checkbox().length;
+      }
+    }
+
+    document.addEventListener('change', function (e) {
+      if (e.target.name === 'persona_ids') aggiornaSelezione();
+    });
+
+    if (selezionaTutto) {
+      selezionaTutto.addEventListener('change', function () {
+        Array.prototype.forEach.call(checkbox(), function (c) { c.checked = selezionaTutto.checked; });
+        aggiornaSelezione();
+      });
+    }
+  })();
+</script>
+{% endblock %}
+
+{% block overlay %}
+{% if persona_aperta %}
+<a href="{{ base }}" class="drawer-backdrop" aria-label="{{ t('Chiudi dettaglio persona') }}"></a>
+<aside class="drawer">
+  <div class="drawer-header">
+    <div>
+      <strong style="font-size:1.1rem">{{ persona_aperta.nome }} {{ persona_aperta.cognome }}</strong>
+      {% if persona_aperta.email %}<div class="muted">{{ persona_aperta.email }}</div>{% endif %}
+      <div style="margin-top:0.4rem; display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;">
+        {% if persona_aperta.attivo %}<span class="badge ok">{{ t("attiva") }}</span>{% else %}<span class="badge err">{{ t("sospesa") }}</span>{% endif %}
+        {% if persona_aperta.ospite %}<span class="badge warning">{{ t("visitatore") }}</span>{% endif %}
+        <form action="/persone/{{ persona_aperta.id }}/attivo" method="post" class="inline">
+          <button type="submit" class="ghost"
+                  {% if persona_aperta.attivo %}data-conferma="I badge di {{ persona_aperta.nome }} {{ persona_aperta.cognome }} non apriranno più i varchi (dopo «Scarica dati ai dispositivi»). Restano associati e lo storico non cambia." data-conferma-titolo="{{ t('Sospendere la persona?') }}" data-conferma-impatto="{{ t('Badge che smettono di aprire: %(p1)s', p1=persona_aperta.media|selectattr('attivo')|list|length) }}" data-conferma-azione="{{ t('Sospendi') }}" data-conferma-tono="neutro"{% endif %}>
+            {{ t('Sospendi') if persona_aperta.attivo else t('Riattiva') }}
+          </button>
+        </form>
+      </div>
+      {% if not persona_aperta.attivo %}
+      <p class="muted" style="margin:0.5rem 0 0">{{ t("Sospesa: i badge non aprono i varchi.") }}{% call aiuto() %}{{ t("Vale ai varchi dopo «Scarica dati».") }}{% endcall %}</p>
+      {% endif %}
+    </div>
+    <a href="{{ base }}" class="drawer-close" aria-label="{{ t('Chiudi') }}">&#10005;</a>
+  </div>
+
+  <div class="schede drawer-schede" data-schede data-schede-param="scheda">
+    <div class="schede-lista" role="tablist" aria-label="{{ t('Sezioni della persona') }}">
+      <button type="button" role="tab" class="scheda-btn" id="tab-accessi" aria-controls="pan-accessi" data-scheda="accessi" aria-selected="{{ 'true' if scheda == 'accessi' else 'false' }}">{{ t("Accessi%(x)s", x="") }}</button>
+      <button type="button" role="tab" class="scheda-btn" id="tab-titoli" aria-controls="pan-titoli" data-scheda="titoli" aria-selected="{{ 'true' if scheda == 'titoli' else 'false' }}">{{ t("Titoli di accesso") }}</button>
+      <button type="button" role="tab" class="scheda-btn" id="tab-presenza" aria-controls="pan-presenza" data-scheda="presenza" aria-selected="{{ 'true' if scheda == 'presenza' else 'false' }}">{{ t("Presenza") }}</button>
+    </div>
+
+    <section role="tabpanel" class="scheda-pannello" id="pan-accessi" aria-labelledby="tab-accessi" {{ '' if scheda == 'accessi' else 'hidden' }}>
+  {% if visitatori %}
+  <div class="drawer-section">
+    <h3>{{ t("Validità") }}{% call aiuto() %}{{ t("Il visitatore entra solo in questo periodo (vale anche per i badge: conta la data più vicina).") }}{% endcall %}</h3>
+    {% if request.query_params.get('salvata') %}<p class="muted" style="margin:0 0 0.5rem">{{ t("Validità salvata.") }}</p>{% endif %}
+    {% if request.query_params.get('errore') in ('scadenza', 'validita_invertita') %}<p style="margin:0 0 0.5rem; color:var(--err)">{{ t("Controlla le date: la scadenza è obbligatoria e non può precedere l'inizio.") }}</p>{% endif %}
+    <form action="/visitatori/{{ persona_aperta.id }}/validita" method="post" style="display:flex; flex-wrap:wrap; gap:0.6rem; align-items:flex-end">
+      <label class="muted" style="font-size:0.78rem">{{ t("Dal (opzionale)") }}<br><input type="datetime-local" name="valido_da" value="{{ persona_aperta.valido_da|a_input }}"></label>
+      <label class="muted" style="font-size:0.78rem">{{ t("Fino al") }}<br><input type="datetime-local" name="valido_a" value="{{ persona_aperta.valido_a|a_input }}" required></label>
+      <button type="submit">{{ t("Salva") }}</button>
+    </form>
+  </div>
+  {% endif %}
+  <div class="drawer-section">
+    <h3>{{ t("Gruppi") }}</h3>
+    <form action="/persone/{{ persona_aperta.id }}/gruppi" method="post">
+      {{ tag_picker('gruppo_id', gruppi_selezionati, gruppi_disponibili_picker,
+           t('Nessun gruppo disponibile: vai su "Gruppi" per crearne uno.')) }}
+      <button type="submit" style="margin-top:0.6rem">{{ t("Salva gruppi") }}</button>
+    </form>
+  </div>
+
+  <div class="drawer-section">
+    <h3>{{ t("Regole dirette") }}{% call aiuto() %}{{ t("Regole solo per questa persona, oltre a quelle dei gruppi.") }}{% endcall %}</h3>
+    <form action="/persone/{{ persona_aperta.id }}/policy" method="post">
+      {{ tag_picker('policy_id', policy_selezionate, policy_disponibili_picker,
+           t('Nessuna regola disponibile: creane una in "Regole di accesso".')) }}
+      <button type="submit" style="margin-top:0.6rem">{{ t("Salva regole") }}</button>
+    </form>
+  </div>
+
+  <div class="drawer-section">
+    <h3>{{ t("Permessi") }}{% call aiuto() %}{{ t("Dove può entrare e quando, in sintesi.") }}{% endcall %}</h3>
+    <a class="button ghost" href="/persone/{{ persona_aperta.id }}/permessi">{{ t("Vedi permessi effettivi") }}</a>
+  </div>
+
+    </section>
+
+    <section role="tabpanel" class="scheda-pannello" id="pan-presenza" aria-labelledby="tab-presenza" {{ '' if scheda == 'presenza' else 'hidden' }}>
+  <div class="drawer-section">
+    <h3>Anti-passback{% call aiuto() %}{{ t("Chi è dentro non può rientrare senza essere uscito. Va attivato anche sul varco. Il reset sblocca la persona.") }}{% endcall %}</h3>
+    <form action="/persone/{{ persona_aperta.id }}/anti-passback" method="post" style="margin:0 0 0.9rem">
+      <label class="sw"><input type="checkbox" name="attivo" value="1" {{ 'checked' if persona_aperta.anti_passback }} {{ 'disabled' if not ap_varchi and not persona_aperta.anti_passback }} onchange="this.form.submit()"> {{ t("Attivo per questa persona") }}</label>
+      {% if not ap_varchi %}<span class="muted" style="font-size:0.8rem; margin-left:0.4rem">{{ t("nessun varco lo ha attivo") }}</span>{% endif %}
+    </form>
+    <p style="margin:0 0 0.5rem">
+      Posizione: <strong>{{ persona_aperta.passback_stato or "sconosciuta" }}</strong>{% if persona_aperta.passback_stato and persona_aperta.passback_varco_id %} <span class="muted">·</span> {{ passback_varco.nome if passback_varco else t('varco eliminato') }}{% endif %}
+      {% if persona_aperta.passback_aggiornato_at %}
+      <span class="muted">{{ t("(aggiornata %(p1)s)", p1=persona_aperta.passback_aggiornato_at|ora) }}</span>
+      {% endif %}
+    </p>
+    {% if persona_aperta.passback_stato %}
+    <form action="/persone/{{ persona_aperta.id }}/reset-passback" method="post">
+      <button type="submit">{{ t("Reset anti-passback") }}</button>
+    </form>
+    {% endif %}
+  </div>
+
+    </section>
+
+    <section role="tabpanel" class="scheda-pannello" id="pan-titoli" aria-labelledby="tab-titoli" {{ '' if scheda == 'titoli' else 'hidden' }}>
+  <div class="drawer-section">
+    <h3>{{ t("Titoli di accesso") }}{% call aiuto(etichetta=t("titoli di accesso")) %}{{ t("Badge, PIN, tag UHF, telefono: una persona può averne più di uno. Il codice è unico.") }}{% endcall %}</h3>
+    <table>
+      <tr><th>{{ t("Titolo") }}</th><th>{{ t("Stato") }}</th><th></th></tr>
+      {% for m in persona_aperta.media %}
+      <tr>
+        <td><span class="muted" style="font-size:0.78rem">{{ icona_cred(m.tipo.value) }} {{ dict(tipi_cred).get(m.tipo.value, m.tipo.value) }}</span><br><code>{{ m.codice }}</code></td>
+        <td>
+          {% if not m.attivo %}<span class="badge err">{{ t("disattivo") }}</span>
+          {% elif m.valido_a and m.valido_a < adesso %}<span class="badge err">{{ t("scaduto") }}</span>
+          {% elif m.valido_da and m.valido_da > adesso %}<span class="badge warning">{{ t("non ancora valido") }}</span>
+          {% else %}<span class="badge ok">{{ t("attivo") }}</span>{% endif %}
+          {% if m.valido_da or m.valido_a %}
+          <div class="muted" style="font-size:0.75rem">
+            {% if m.valido_da %}{{ t("dal %(p1)s", p1=m.valido_da|ora("%d/%m/%Y %H:%M")) }}{% endif %}
+            {% if m.valido_a %}{{ t("fino al %(p1)s", p1=m.valido_a|ora("%d/%m/%Y %H:%M")) }}{% endif %}
+          </div>
+          {% endif %}
+        </td>
+        <td>
+          <form action="/media/{{ m.id }}/toggle" method="post" class="inline">
+            <button type="submit" class="ghost">{{ t('Disattiva') if m.attivo else t('Attiva') }}</button>
+          </form>
+        </td>
+      </tr>
+      <tr>
+        <td colspan="3" style="border-bottom:1px solid var(--border); padding-top:0">
+          <details>
+            <summary class="muted" style="cursor:pointer; font-size:0.78rem">{{ t("Validità nel tempo") }}</summary>
+            <form action="/media/{{ m.id }}/validita" method="post" style="display:flex; flex-wrap:wrap; gap:0.4rem; align-items:flex-end; margin-top:0.4rem">
+              <label class="muted" style="font-size:0.75rem">{{ t("Da") }}<br><input type="datetime-local" name="valido_da" value="{{ m.valido_da|a_input }}"></label>
+              <label class="muted" style="font-size:0.75rem">A<br><input type="datetime-local" name="valido_a" value="{{ m.valido_a|a_input }}"></label>
+              <button type="submit" class="ghost">{{ t("Salva") }}</button>{% call aiuto() %}{{ t("Vuoto = nessun limite. Vale ai varchi dopo «Scarica dati».") }}{% endcall %}
+            </form>
+          </details>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="3" class="muted">{{ t("Nessun titolo di accesso associato.") }}</td></tr>
+      {% endfor %}
+    </table>
+    <form action="/persone/{{ persona_aperta.id }}/media" method="post" style="margin-top:0.6rem">
+      <select name="tipo" id="nuova-cred-tipo" aria-label="{{ t('Tipo di credenziale') }}" style="margin-bottom:0.4rem">
+        {% for tc, et in tipi_cred %}<option value="{{ tc }}">{{ et }}{{ t(' (numero da tastiera)') if tc == 'pin' }}</option>{% endfor %}
+      </select>
+      <input type="text" name="codice" id="nuova-cred-codice" placeholder="{{ suggerimenti_cred['rfid'] }}" required autocomplete="off">
+      <details style="margin:0.4rem 0">
+        <summary class="muted" style="cursor:pointer; font-size:0.78rem">{{ t("Limita la validità (opzionale)") }}</summary>
+        <div style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-top:0.4rem">
+          <label class="muted" style="font-size:0.75rem">{{ t("Da") }}<br><input type="datetime-local" name="valido_da"></label>
+          <label class="muted" style="font-size:0.75rem">A<br><input type="datetime-local" name="valido_a"></label>
+        </div>
+      </details>
+      <button type="submit">{{ t("Aggiungi titolo") }}</button>
+    </form>
+    <script>
+      (function () {
+        var t = document.getElementById('nuova-cred-tipo'), c = document.getElementById('nuova-cred-codice');
+        var sugg = {{ suggerimenti_cred|tojson }};
+        if (t && c) t.addEventListener('change', function () { c.placeholder = sugg[t.value] || ''; c.inputMode = t.value === 'pin' ? 'numeric' : 'text'; });
+      })();
+    </script>
+  </div>
+    </section>
+  </div>
+</aside>
+{% endif %}
+{% endblock %}

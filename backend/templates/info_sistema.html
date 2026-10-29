@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% from "_macros.html" import aiuto %}
+{% block title %}{{ t("Info sistema") }}{% endblock %}
+{% block content %}
+<header class="page-head"><h1>{{ t("Info sistema") }}{% call aiuto() %}{{ t("Stato del sistema e dei varchi. «Log» è il diario di cosa è successo.") }}{% endcall %}</h1></header>
+
+<nav class="schede-lista" aria-label="{{ t('Sezioni di Info sistema') }}">
+  <a class="scheda-link" href="/sistema/info" {% if scheda != 'log' %}aria-current="page"{% endif %}>{{ t("Stato e dispositivo") }}</a>
+  <a class="scheda-link" href="/sistema/info?scheda=log" {% if scheda == 'log' %}aria-current="page"{% endif %}>{{ t("Log") }}</a>
+</nav>
+<style>
+  a.scheda-link { border-bottom:2px solid transparent; margin-bottom:-1px; padding:0.7rem 0 0.65rem; min-height:2.75rem; color:var(--muted); font-weight:600; font-size:0.9rem; text-decoration:none; display:inline-flex; align-items:center; }
+  a.scheda-link:hover { color:var(--text); }
+  a.scheda-link[aria-current="page"] { color:var(--text); border-bottom-color:var(--accent); }
+  a.scheda-link:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
+</style>
+
+{% if scheda == 'log' %}
+{% include "_log_scheda.html" %}
+{% else %}
+
+<h2 class="stato-blocco" style="margin-top:0">{{ t("Stato") }}</h2>
+<div id="stato-live" hx-get="/sistema/info" hx-trigger="every 6s" hx-select="#stato-live" hx-swap="outerHTML">
+  <div class="card stato-verdetto stato-{{ verdetto.livello }}">
+    <span class="stato-pallino"></span>
+    <div>
+      <strong>{{ verdetto.titolo }}</strong>
+      {% if verdetto.livello != 'ok' %}
+      <div class="muted">{{ t("%(p1)s %(p2)s, %(p3)s %(p4)s: i punti da guardare sono in evidenza qui sotto.", p1=verdetto.errori, p2=t('problema') if verdetto.errori == 1 else t('problemi'), p3=verdetto.avvisi, p4=t('avviso') if verdetto.avvisi == 1 else t('avvisi')) }}</div>
+      {% else %}
+      <div class="muted">{{ t("Il sistema e i varchi non segnalano anomalie.") }}</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <h3 class="stato-sezione">{{ t("Controlli di sistema") }}</h3>
+  <div class="card" style="padding:0.25rem 0">
+    {% for c in sistema %}{% include "_stato_riga.html" %}{% endfor %}
+  </div>
+
+  <h3 class="stato-sezione">{{ t("Controlli per varco") }}</h3>
+  {% for g in per_varco %}
+  <div class="card" style="padding:0.25rem 0">
+    <div class="stato-varco-nome"><a href="/varchi?apri={{ g.varco.id }}">{{ g.varco.nome }}</a></div>
+    {% for c in g.controlli %}{% include "_stato_riga.html" %}{% endfor %}
+  </div>
+  {% else %}
+  <p class="muted">{{ t("Nessun varco configurato.") }}</p>
+  {% endfor %}
+</div>
+
+
+<h2 class="stato-blocco" style="margin-top:2rem">{{ t("Dispositivo") }}</h2>
+
+<div class="stat-grid">
+  <div class="stat-card" style="animation-delay:0.00s">
+    <div class="stat-label">{{ t("Ora sistema") }}</div>
+    <div class="stat-value" id="clock-value">{{ info.ora_sistema.strftime('%H:%M:%S') }}</div>
+    <div class="stat-sub">{{ info.ora_sistema.strftime('%d/%m/%Y') }}</div>
+  </div>
+
+  <div class="stat-card" style="animation-delay:0.03s">
+    <div class="stat-label">{{ t("Indirizzo IP") }}</div>
+    <div class="stat-value" style="font-size:1.15rem">{{ info.ip_locale }}</div>
+    <div class="stat-sub">{{ info.hostname }}</div>
+  </div>
+
+  <div class="stat-card" style="animation-delay:0.06s">
+    <div class="stat-label">{{ t("Uptime") }}</div>
+    <div class="stat-value">{{ info.uptime }}</div>
+    <div class="stat-sub">{{ t("da quando è stato acceso") }}</div>
+  </div>
+
+  <div class="stat-card" style="animation-delay:0.09s">
+    <div class="stat-label">{{ t("Temperatura CPU") }}</div>
+    <div class="stat-value">{{ (info.temperatura_cpu_c ~ ' °C') if info.temperatura_cpu_c is not none else 'N/D' }}</div>
+    <div class="stat-sub">
+      {% if info.temperatura_cpu_c is not none and info.temperatura_cpu_c >= 70 %}
+      <span class="badge err">{{ t("alta") }}</span>
+      {% elif info.temperatura_cpu_c is not none %}
+      <span class="badge ok">{{ t("regolare") }}</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="stat-card" style="animation-delay:0.12s">
+    <div class="stat-label">{{ t("Memoria") }}</div>
+    <div class="stat-value">
+      {% if info.memoria_disponibile_mb is not none %}{{ t("%(p1)s MB liberi", p1=info.memoria_disponibile_mb) }}{% else %}N/D{% endif %}
+    </div>
+    <div class="stat-sub">{% if info.memoria_totale_mb is not none %}{{ t("su %(p1)s MB totali", p1=info.memoria_totale_mb) }}{% endif %}</div>
+  </div>
+
+  <div class="stat-card" style="animation-delay:0.15s">
+    <div class="stat-label">{{ t("Disco") }}</div>
+    <div class="stat-value">{{ t("%(p1)s GB liberi", p1=info.disco_libero_gb) }}</div>
+    <div class="stat-sub">{{ t("su %(p1)s GB totali", p1=info.disco_totale_gb) }}</div>
+  </div>
+
+  <div class="stat-card" style="animation-delay:0.18s">
+    <div class="stat-label">{{ t("Sistema operativo") }}</div>
+    <div class="stat-value" style="font-size:1rem">{{ info.sistema_operativo }}</div>
+    <div class="stat-sub">{{ info.architettura }}</div>
+  </div>
+
+  <div class="stat-card" style="animation-delay:0.21s">
+    <div class="stat-label">{{ t("Python") }}</div>
+    <div class="stat-value">{{ info.versione_python }}</div>
+    <div class="stat-sub">{{ t("versione interprete usata dall'app") }}</div>
+  </div>
+</div>
+
+<style>
+  .stato-verdetto { display:flex; align-items:center; gap:0.9rem; border-left:4px solid var(--ok); }
+  .stato-verdetto strong { font-size:1.1rem; }
+  .stato-verdetto.stato-warning { border-left-color: var(--warning); }
+  .stato-verdetto.stato-error { border-left-color: var(--err); }
+  .stato-pallino { width:14px; height:14px; border-radius:50%; background:var(--ok); flex-shrink:0; }
+  .stato-warning .stato-pallino { background:var(--warning); }
+  .stato-error .stato-pallino { background:var(--err); }
+  .stato-blocco { font-size:1.1rem; margin:0 0 0.7rem; }
+  .stato-sezione { font-size:0.8rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--muted); margin:1.4rem 0 0.5rem; }
+  .stato-riga { display:flex; align-items:center; gap:0.75rem; padding:0.55rem 1.1rem; border-bottom:1px solid var(--border); }
+  .stato-riga:last-child { border-bottom:none; }
+  .stato-riga .badge { flex-shrink:0; min-width:4.2rem; text-align:center; }
+  .stato-testo { flex:1; min-width:0; }
+  .stato-testo strong { font-size:0.9rem; }
+  .stato-testo div { font-size:0.82rem; color:var(--muted); }
+  @media (max-width:720px) {
+    .stato-riga { flex-wrap:wrap; row-gap:0.3rem; }
+    .stato-riga .badge { min-width:5.6rem; }
+    .stato-testo { flex-basis:calc(100% - 6.4rem); }
+    .stato-riga > a { margin-left:6.35rem; }
+  }
+  .stato-varco-nome { padding:0.6rem 1.1rem 0.2rem; font-weight:600; }
+</style>
+<script>
+  (function () {
+    var el = document.getElementById('clock-value');
+    if (!el) return;
+    var ora = new Date("{{ info.ora_sistema.isoformat() }}");
+    function pad(n) { return String(n).padStart(2, '0'); }
+    setInterval(function () {
+      ora = new Date(ora.getTime() + 1000);
+      el.textContent = pad(ora.getHours()) + ':' + pad(ora.getMinutes()) + ':' + pad(ora.getSeconds());
+    }, 1000);
+  })();
+</script>
+{% endif %}
+{% endblock %}

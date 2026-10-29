@@ -1,0 +1,26 @@
+{% for r in righe %}
+{% set classe = 'err' if r.livello.value == 'error' else ('warning' if r.livello.value == 'warning' else ('muted-badge' if r.livello.value == t('debug') else t('info'))) %}
+<tr class="log-{{ classe }}" data-id="{{ r.id }}">
+  <td class="muted log-ora" data-label="Data/ora">{{ r.timestamp|ora }}</td>
+  <td data-label="Livello"><span class="badge {{ classe }}">{{ {'error': t('errore'), 'warning': t('avviso'), t('info'): t('info'), t('debug'): t('debug')}[r.livello.value] }}</span></td>
+  <td class="muted" data-label="Origine">{{ r.categoria or '—' }}</td>
+  <td data-label="Varco">{% if r.varco_id %}{{ nomi_varchi.get(r.varco_id) or ('n. ' ~ r.varco_id ~ t(' (eliminato)')) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+  <td class="log-msg" data-label="Messaggio">
+    {{ r.messaggio }}
+    {% if r.codice or r.utente %}
+    <div class="log-meta">
+      {% if r.codice %}<code class="log-codice">{{ r.codice }}</code>{% endif %}
+      {% if r.utente %}<span class="muted">{{ r.utente }}{% if r.origine_ip %} {{ t("da %(p1)s", p1=r.origine_ip) }}{% endif %}</span>{% endif %}
+    </div>
+    {% endif %}
+  </td>
+  <td class="mon-azione">
+    <button type="button" class="mon-apri" hx-get="/log/{{ r.id }}/dettaglio" hx-target="#log-dr-corpo" hx-swap="innerHTML"
+            aria-label="{{ t('Apri il dettaglio di questa riga') }}" title="{{ t('Dettaglio') }}"><span class="mon-apri-testo">{{ t("Dettaglio") }}</span><span class="mon-apri-freccia" aria-hidden="true">&#8250;</span></button>
+  </td>
+</tr>
+{% else %}
+<tr><td colspan="6" class="muted" style="padding:1.25rem">
+  {% if filtri_attivi %}{{ t("Nessuna riga corrisponde ai filtri.") }} <a href="/sistema/info?scheda=log">{{ t("Azzera i filtri") }}</a>.{% else %}{{ t("Nessun log registrato ancora.") }}{% endif %}
+</td></tr>
+{% endfor %}

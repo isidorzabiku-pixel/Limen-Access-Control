@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+{% from "_macros.html" import aiuto %}
+{% block title %}{{ t('Proprietà di sistema') if user.is_admin else t('Il mio account') }}{% endblock %}
+{% block content %}
+<header class="page-head"><h1>{% if user.is_admin %}{{ t("Proprietà di sistema") }}{% call aiuto() %}{{ t("Backup, riavvio, pulizia log e utenti. Per l'hardware vedi") }} <a href="/sistema/info">{{ t("Info sistema") }}</a>.{% endcall %}{% else %}{{ t("Il mio account") }}{% endif %}</h1>
+  <div class="page-head-right"><a class="button ghost" href="/sistema?pannello=lingua" aria-haspopup="dialog">{{ t("Lingua") }} · {{ lingua_corrente()|upper }}</a></div></header>
+
+{% set esito_pw = request.query_params.get('password') %}
+{% if esito_pw == 'ok' %}
+<div class="flash-banner ok" role="status">{{ t("Password cambiata.") }}</div>
+{% elif esito_pw == 'errata' %}
+<div class="flash-banner err" role="alert">{{ t("Password attuale errata: nessuna modifica fatta.") }}</div>
+{% elif esito_pw == 'diversa' %}
+<div class="flash-banner err" role="alert">{{ t("Le due password nuove non coincidono: nessuna modifica fatta.") }}</div>
+{% elif esito_pw == 'corta' %}
+<div class="flash-banner err" role="alert">{{ t("La nuova password deve avere almeno 8 caratteri.") }}</div>
+{% endif %}
+
+{% set esito_utente = request.query_params.get('utente') %}
+{% if esito_utente == 'creato' %}
+<div class="flash-banner ok" role="status">{{ t("Utente creato.") }}</div>
+{% elif esito_utente == 'eliminato' %}
+<div class="flash-banner info" role="status">{{ t("Utente eliminato.") }}</div>
+{% elif esito_utente == 'ruolo_cambiato' %}
+<div class="flash-banner info" role="status">{{ t("Ruolo aggiornato.") }}</div>
+{% elif esito_utente == 'password_reimpostata' %}
+<div class="flash-banner info" role="status">{{ t("Password reimpostata.") }}</div>
+{% endif %}
+
+{% set errore = request.query_params.get('errore') %}
+{% if errore == 'username_vuoto' %}
+<div class="flash-banner err" role="alert">{{ t("Il nome utente non può essere vuoto.") }}</div>
+{% elif errore == 'utente_duplicato' %}
+<div class="flash-banner err" role="alert">{{ t("Esiste già un utente con questo nome.") }}</div>
+{% elif errore == 'password_corta' %}
+<div class="flash-banner err" role="alert">{{ t("La password deve avere almeno 8 caratteri.") }}</div>
+{% elif errore == 'password_diversa' %}
+<div class="flash-banner err" role="alert">{{ t("Le due password non coincidono.") }}</div>
+{% elif errore == 'ultimo_admin' %}
+<div class="flash-banner err" role="alert">{{ t("Operazione bloccata: lascerebbe il sistema senza nessun amministratore.") }}</div>
+{% elif errore == 'api_dati' %}
+<div class="flash-banner err" role="alert">{{ t("Account API: servono un nome e un utente (solo lettere, numeri, punto, trattino e underscore).") }}</div>
+{% elif errore == 'api_duplicato' %}
+<div class="flash-banner err" role="alert">{{ t("Esiste già un account API con questo utente.") }}</div>
+{% elif errore == 'non_puoi_eliminarti' %}
+<div class="flash-banner err" role="alert">{{ t("Non puoi eliminare il tuo stesso utente.") }}</div>
+{% endif %}
+
+{% if request.query_params.get('riavviato') == '1' %}
+<div class="flash-banner warn" role="status">
+  {{ t("Riavvio richiesto: se il backend è gestito da systemd (o un supervisor equivalente) torna su in pochi secondi. Se invece lo stai eseguendo a mano in un terminale, controlla lì: il processo si è chiuso e non riparte da solo.") }}
+</div>
+{% endif %}
+{% if request.query_params.get('conservazione') == 'salvata' %}
+<div class="flash-banner ok" role="status">{{ t("Conservazione dei dati salvata: verrà applicata alla prossima pulizia periodica.") }}</div>
+{% elif request.query_params.get('conservazione') == 'applicata' %}
+<div class="flash-banner ok" role="status">{{ t("Conservazione applicata: %(p1)s righe eliminate.", p1=request.query_params.get('eliminati', '0')) }}</div>
+{% endif %}
+{% if request.query_params.get('pulizia') == 'ok' %}
+<div class="flash-banner ok" role="status">{{ t("Pulizia log completata.") }}</div>
+{% endif %}
+
+{# Gli operatori arrivano qui solo per cambiare la propria password: tutto il
+   resto della pagina (stato, backup, riavvio, conservazione, log, utenti) è
+   per gli admin. #}
+{% if user.is_admin %}
+<div class="stat-grid" style="margin-bottom:1.25rem;">
+  <div class="stat-card" style="animation-delay:0.00s">
+    <div class="stat-label">{{ t("App attiva da") }}</div>
+    <div class="stat-value">{{ da_quando_attivo }}</div>
+    <div class="stat-sub">{{ t("da quando è partito questo processo") }}</div>
+  </div>
+  <div class="stat-card" style="animation-delay:0.03s">
+    <div class="stat-label">{{ t("Canale UDP") }}</div>
+    <div class="stat-value">
+      {% if stato_udp.ricezione_attiva and stato_udp.cache_attiva %}
+      <span class="badge ok">{{ t("attivo") }}</span>
+      {% else %}
+      <span class="badge err">{{ t("inattivo") }}</span>
+      {% endif %}
+    </div>
+    <div class="stat-sub">{{ t("ricezione %(p1)s · invio cache %(p2)s", p1='ok' if stato_udp.ricezione_attiva else t('ferma'), p2='ok' if stato_udp.cache_attiva else t('fermo')) }}</div>
+  </div>
+  <div class="stat-card" style="animation-delay:0.06s">
+    <div class="stat-label">{{ t("Varchi online") }}</div>
+    <div class="stat-value">{{ varchi_online }} / {{ varchi_totali }}</div>
+    <div class="stat-sub"><a href="/varchi" class="card-foot-link">{{ t("vedi tutti →") }}</a></div>
+  </div>
+  <div class="stat-card" style="animation-delay:0.09s">
+    <div class="stat-label">{{ t("Log di sistema") }}</div>
+    <div class="stat-value">{{ righe_log_totali }}</div>
+    <div class="stat-sub">{{ t("%(p1)s di livello \"info\" pulibili ·", p1=righe_log_pulibili) }} <a href="/sistema/info?scheda=log" class="card-foot-link">{{ t("vedi →") }}</a></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">{{ t("Backup") }}{% call aiuto() %}{{ t("Copia del database. Non include") }} <code>.env</code> {{ t("né i") }} <code>config.yaml</code> {{ t("degli slave.") }}{% endcall %}</h2>
+  <a href="/sistema/backup" class="button-link"><button type="button" onclick="window.location='/sistema/backup'">{{ t("Scarica backup") }}</button></a>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">{{ t("Riavvio app") }}{% call aiuto() %}{{ t("Riavvia l'app. Funziona solo se un servizio (systemd) la rialza da solo.") }}{% endcall %}</h2>
+  <form method="post" action="/sistema/riavvia">
+    <button type="submit" style="background:var(--warning); color:#1a1200;"
+            data-conferma="{{ t('Il backend si riavvia adesso. Tutti gli utenti collegati perdono la sessione e devono rifare login.') }}" data-conferma-titolo="{{ t('Riavviare l\'app?') }}"
+            data-conferma-impatto="{{ t('I varchi continuano a decidere da soli con i dati che hanno') }}" data-conferma-azione="{{ t('Riavvia') }}" data-conferma-tono="neutro">{{ t("Riavvia app") }}</button>
+  </form>
+</div>
+
+{% endif %}
+
+<div class="card">
+  <h2 style="margin-top:0;">{{ t("Manuale d'uso") }}{% call aiuto() %}{{ t("Come usare Limen, per operatori e amministratori.") }}{% endcall %}</h2>
+  <p style="margin:0"><a class="button ghost" href="/sistema/manuale">{{ t("Scarica il manuale (PDF)") }}</a></p>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">{{ t("Cambia la tua password") }}</h2>
+  <form method="post" action="/sistema/password">
+    <input type="password" name="password_attuale" autocomplete="current-password" placeholder="{{ t('Password attuale') }}" required style="width:100%; margin-bottom:0.6rem;">
+    <input type="password" name="nuova_password" autocomplete="new-password" placeholder="{{ t('Nuova password (almeno 8 caratteri)') }}" required minlength="8" style="width:100%; margin-bottom:0.6rem;">
+    <input type="password" name="conferma_password" autocomplete="new-password" placeholder="{{ t('Ripeti la nuova password') }}" required minlength="8" style="width:100%; margin-bottom:0.6rem;">
+    <button type="submit" data-conferma="{{ t('Da ora per accedere userai la nuova password. Se la dimentichi un amministratore può reimpostarla.') }}" data-conferma-titolo="{{ t('Cambiare la tua password?') }}" data-conferma-azione="{{ t('Cambia password') }}" data-conferma-tono="neutro">{{ t("Cambia password") }}</button>
+  </form>
+</div>
+
+{% if user.is_admin %}
+
+<div class="card">
+  <h2 style="margin-top:0;">{{ t("Conservazione dei dati") }}{% call aiuto() %}{{ t("Sono i dati del") }} <a href="/monitoraggio">{{ t("Monitoraggio") }}</a>{{ t(": passaggi e log. 0 = si tengono sempre; con un numero, quelli più vecchi vengono eliminati in automatico (mai gli allarmi da gestire).") }}{% endcall %}</h2>
+  <p class="muted">{{ t("Il Registro oggi contiene") }} <strong>{{ eventi_totali }}</strong> {{ t("passaggi") }}{% if evento_piu_vecchio %}{{ t(", il più vecchio del %(p1)s", p1=evento_piu_vecchio|ora('%d/%m/%Y')) }}{% endif %}.</p>
+  <form method="post" action="/sistema/conservazione" style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:flex-end">
+    <label class="muted" style="font-size:0.78rem">{{ t("Passaggi (giorni)") }}<br>
+      <input type="number" name="retention_eventi_giorni" min="0" max="3650" value="{{ retention_eventi }}" placeholder="{{ t('0 = sempre') }}" style="width:9rem">
+    </label>
+    <label class="muted" style="font-size:0.78rem">{{ t("Log (giorni)") }}<br>
+      <input type="number" name="retention_log_giorni" min="0" max="3650" value="{{ retention_log }}" placeholder="{{ t('0 = sempre') }}" style="width:9rem">
+    </label>
+    <button type="submit">{{ t("Salva") }}</button>
+    <button type="submit" name="applica_ora" value="1" class="ghost"
+            data-conferma="{{ t('I passaggi e i log più vecchi del periodo scelto vengono eliminati subito e non sono recuperabili (salvo da un backup).') }}"
+            data-conferma-titolo="{{ t('Salvare e applicare subito?') }}"
+            data-conferma-impatto="{{ t('Passaggi: conservati {campo:retention_eventi_giorni} giorni (0 = sempre);Log: conservati {campo:retention_log_giorni} giorni (0 = sempre)') }}"
+            data-conferma-azione="{{ t('Salva e applica') }}">{{ t("Salva e applica ora") }}</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">{{ t("Pulizia log") }}{% call aiuto() %}{{ t("Elimina i log «info» più vecchi della soglia. Avvisi, errori e passaggi non si toccano.") }}{% endcall %}</h2>
+  <form method="post" action="/sistema/log/pulizia">
+    <select name="giorni">
+      <option value="30">{{ t("più vecchie di 30 giorni") }}</option>
+      <option value="90" selected>{{ t("più vecchie di 90 giorni") }}</option>
+      <option value="180">{{ t("più vecchie di 180 giorni") }}</option>
+      <option value="365">{{ t("più vecchie di 365 giorni") }}</option>
+    </select>
+    <button type="submit" class="danger"
+            data-conferma="{{ t('Elimina le righe di log di livello «info» più vecchie della soglia scelta. Avvisi ed errori non vengono toccati. Non è reversibile.') }}"
+            data-conferma-titolo="{{ t('Pulire il log?') }}" data-conferma-impatto="{{ t('Righe «info» più vecchie di {campo:giorni} giorni') }}" data-conferma-azione="{{ t('Pulisci') }}">{{ t("Pulisci") }}</button>
+  </form>
+</div>
+
+
+<div class="card" id="api">
+  <h2 style="margin-top:0;">{{ t("API") }}{% call aiuto() %}{{ t("Per altri programmi: ognuno ha un suo account, fa login e riceve un token valido 48 ore. La password si vede una sola volta. Usa HTTPS fuori dalla rete locale.") }}{% endcall %}</h2>
+  {% if api_nuova %}
+  <div class="flash-banner warn" role="status">
+    {{ t("Account") }} <strong>{{ api_nuova.username }}</strong> {{ t("— password:") }} <code style="user-select:all">{{ api_nuova.password }}</code><br>
+    <span class="muted">{{ t("Copiala adesso: non verrà più mostrata.") }}</span>
+  </div>
+  {% endif %}
+  <p style="margin:0 0 .8rem"><a class="button ghost" href="/sistema/api/documentazione">{{ t("Scarica la documentazione (PDF, inglese)") }}</a></p>
+  {% if api_accounts %}
+  <table class="tabella-card">
+    <tr><th>{{ t("Nome") }}</th><th>{{ t("Utente") }}</th><th>{{ t("Ultimo uso") }}</th><th></th></tr>
+    {% for a in api_accounts %}
+    <tr>
+      <td data-label="Nome">{{ a.nome }}{% if not a.attivo %} <span class="badge">{{ t("revocato") }}</span>{% endif %}</td>
+      <td data-label="Utente"><code>{{ a.username }}</code></td>
+      <td class="muted" data-label="Ultimo uso">{{ a.ultimo_uso|ora('%d/%m/%Y %H:%M') if a.ultimo_uso else t('mai') }}</td>
+      <td class="row-actions">
+        <form class="inline" method="post" action="/sistema/api/account/{{ a.id }}/attivo"><button type="submit" class="ghost">{{ t('revoca') if a.attivo else t('riattiva') }}</button></form>
+        <form class="inline" method="post" action="/sistema/api/account/{{ a.id }}/password"><button type="submit" class="ghost"
+          data-conferma="{{ t('Viene generata una nuova password e i token attuali smettono di valere.') }}" data-conferma-titolo="{{ t('Nuova password per %(p1)s?', p1=a.username) }}" data-conferma-azione="{{ t('Genera') }}" data-conferma-tono="neutro">{{ t("nuova password") }}</button></form>
+        <form class="inline" method="post" action="/sistema/api/account/{{ a.id }}/elimina"><button type="submit" class="danger"
+          data-conferma="{{ t('Il programma che usa questo account non potrà più collegarsi.') }}" data-conferma-titolo="{{ t('Eliminare l\'account %(p1)s?', p1=a.username) }}" data-conferma-azione="{{ t('Elimina') }}">{{ t("elimina") }}</button></form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+  <form method="post" action="/sistema/api/account" class="inline-form" style="margin-top:1rem; display:flex; gap:.6rem; flex-wrap:wrap; align-items:center;">
+    <input type="text" name="nome" placeholder="{{ t('Nome (es. Portineria)') }}" required maxlength="80">
+    <input type="text" name="username" autocomplete="off" placeholder="{{ t('Utente') }}" required maxlength="64" pattern="[A-Za-z0-9._\-]+">
+    <button type="submit">{{ t("Crea account") }}</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">{{ t("Utenti") }}{% call aiuto() %}{{ t("Amministratore: usa tutta questa pagina. Operatore: gestisce persone, varchi e regole e cambia solo la propria password.") }}{% endcall %}</h2>
+
+  <table class="tabella-card">
+    <tr><th>{{ t("Utente") }}</th><th>{{ t("Ruolo") }}</th><th>{{ t("Creato") }}</th><th></th></tr>
+    {% for u in utenti %}
+    <tr>
+      <td data-label="Utente">{{ u.username }}{% if u.id == user.id %} <span class="muted">{{ t("(tu)") }}</span>{% endif %}</td>
+      <td data-label="Ruolo">
+        {% if u.is_admin %}<span class="badge info">{{ t("amministratore") }}</span>{% else %}<span class="badge">{{ t("operatore") }}</span>{% endif %}
+      </td>
+      <td class="muted" data-label="Creato">{{ u.created_at|ora('%d/%m/%Y') }}</td>
+      <td class="row-actions">
+        <form class="inline" method="post" action="/sistema/utenti/{{ u.id }}/ruolo">
+          <button type="submit" class="ghost"
+                  data-conferma="{{ t('%(u)s non vedrà più Proprietà di sistema e potrà cambiare solo la propria password.', u=u.username) if u.is_admin else t('%(u)s potrà gestire utenti, backup e riavvio dell\'app.', u=u.username) }}"
+                  data-conferma-titolo="{{ t('Cambiare il ruolo di %(p1)s?', p1=u.username) }}" data-conferma-azione="{{ t('Rendi operatore') if u.is_admin else t('Rendi admin') }}" data-conferma-tono="neutro">{{ t('rendi operatore') if u.is_admin else t('rendi admin') }}</button>
+        </form>
+        <details>
+          <summary class="ghost">{{ t("reset password") }}</summary>
+          <form class="inline-form" method="post" action="/sistema/utenti/{{ u.id }}/password">
+            <input type="password" name="nuova_password" autocomplete="new-password" placeholder="{{ t('Nuova password') }}" required minlength="8" style="width:10rem;">
+            <input type="password" name="conferma_password" autocomplete="new-password" placeholder="{{ t('Ripeti') }}" required minlength="8" style="width:10rem;">
+            <button type="submit" data-conferma="{{ t('%(p1)s dovrà usare la nuova password al prossimo accesso: quella attuale smette di valere subito.', p1=u.username) }}" data-conferma-titolo="{{ t('Reimpostare la password di %(p1)s?', p1=u.username) }}" data-conferma-azione="{{ t('Imposta password') }}" data-conferma-tono="neutro">{{ t("Imposta") }}</button>
+          </form>
+        </details>
+        {% if u.id != user.id %}
+        <form class="inline" method="post" action="/sistema/utenti/{{ u.id }}/delete">
+          <button type="submit" class="danger"
+                  data-conferma="{{ t('Stai per eliminare l\'utente «%(p1)s». Non è reversibile.', p1=u.username) }}" data-conferma-titolo="{{ t('Eliminare l\'utente?') }}"
+                  data-conferma-azione="{{ t('Elimina utente') }}">{{ t("Elimina") }}</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+
+  <details class="card-toggle" style="margin-top:1rem; background:var(--card-raised); border-radius:10px;">
+    <summary><span class="toggle-plus">+</span> {{ t("Nuovo utente") }}</summary>
+    <div class="card-toggle-body">
+      <form method="post" action="/sistema/utenti">
+        <input type="text" name="username" autocomplete="off" placeholder="{{ t('Nome utente') }}" required>
+        <input type="password" name="password" autocomplete="new-password" placeholder="{{ t('Password (almeno 8 caratteri)') }}" required minlength="8">
+        <input type="password" name="conferma_password" autocomplete="new-password" placeholder="{{ t('Ripeti la password') }}" required minlength="8">
+        <label class="muted"><input type="checkbox" name="is_admin" value="1"> {{ t("Amministratore") }}</label>
+        <button type="submit">{{ t("Crea utente") }}</button>
+      </form>
+    </div>
+  </details>
+</div>
+{% endif %}
+{% endblock %}
+{% block overlay %}
+{% if request.query_params.get('pannello') == 'lingua' %}
+<a href="/sistema" class="drawer-backdrop" aria-label="{{ t('Chiudi') }}"></a>
+<aside class="drawer">
+  <div class="drawer-header">
+    <div><strong style="font-size:1.1rem">{{ t("Lingua") }}</strong></div>
+    <a href="/sistema" class="drawer-close" aria-label="{{ t('Chiudi') }}">&#10005;</a>
+  </div>
+  <div class="drawer-section">
+    <h3 style="margin:0 0 0.5rem; font-size:0.9rem">{{ t("La mia lingua") }}{% call aiuto() %}{{ t("Vale solo per te, su ogni dispositivo.") }}{% endcall %}</h3>
+    <div style="display:flex; flex-direction:column; gap:0.4rem">
+      {% for cod, nome in LINGUE.items() %}<a class="button {{ '' if cod == lingua_corrente() else 'ghost' }}" href="/lingua/{{ cod }}?next={{ '/sistema?pannello=lingua'|urlencode }}" {{ 'aria-current=true' if cod == lingua_corrente() }}>{{ nome }}{% if cod == lingua_corrente() %} ✓{% endif %}</a>{% endfor %}
+    </div>
+  </div>
+  {% if user.is_admin %}
+  <div class="drawer-section" style="margin-top:1.25rem">
+    <h3 style="margin:0 0 0.5rem; font-size:0.9rem">{{ t("Lingua predefinita") }}{% call aiuto() %}{{ t("Per chi non ne ha scelta una (login compreso).") }}{% endcall %}</h3>
+    {% if request.query_params.get('lingua') == 'salvata' %}<div class="flash-banner ok" role="status">{{ t("Lingua predefinita salvata.") }}</div>{% endif %}
+    <form method="post" action="/sistema/lingua" style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap">
+      <select name="lingua" style="width:11rem">{% for cod, nome in LINGUE.items() %}<option value="{{ cod }}" {{ 'selected' if cod == lingua_di_sistema }}>{{ nome }}</option>{% endfor %}</select>
+      <button type="submit">{{ t("Salva") }}</button>
+    </form>
+  </div>
+  {% endif %}
+</aside>
+{% endif %}
+{% endblock %}

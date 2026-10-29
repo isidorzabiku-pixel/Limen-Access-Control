@@ -1,0 +1,14 @@
+venv/
+*/venv/
+__pycache__/
+*/__pycache__/
+*.pyc
+*.db
+*.sqlite3
+.env
+access-control-snapshot-*.txt
+*.db-wal
+*.db-shm
+agent/stato/
+agent/config.yaml
+backend/certs/

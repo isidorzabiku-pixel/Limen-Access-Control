@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% from "_macros.html" import scarica_dati_button %}
+{% block title %}{{ t("Dashboard") }}{% endblock %}
+{% block content %}
+
+<style>
+  .dash-header { display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:0.5rem; margin-bottom:1.25rem; }
+
+  .dash-grid { display:grid; grid-template-columns: 1.3fr 1fr; gap:1rem; align-items:start; }
+  @media (max-width: 980px) { .dash-grid { grid-template-columns: 1fr; } }
+
+  .feed-row {
+    display:flex; align-items:center; gap:0.75rem;
+    padding:0.6rem 0; border-bottom:1px solid var(--border);
+  }
+  .feed-row:last-child { border-bottom:none; }
+  .feed-icon { width:30px; height:30px; border-radius:8px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .feed-icon.ok { background: rgba(34,197,94,0.15); color: var(--ok); }
+  .feed-icon.err { background: rgba(239,68,68,0.15); color: var(--err); }
+  .feed-icon.info { background: var(--accent-dim); color: var(--accent); }
+  .feed-main { flex:1; min-width:0; }
+  .feed-title { font-size:0.88rem; font-weight:600; }
+  .feed-sub { font-size:0.78rem; color: var(--muted); }
+  .feed-time { font-family: var(--font-mono); font-size:0.76rem; color: var(--muted); white-space:nowrap; }
+
+  .varco-row { display:flex; align-items:center; gap:0.65rem; padding:0.55rem 0; border-bottom:1px solid var(--border); }
+  .varco-row:last-child { border-bottom:none; }
+  .varco-name { font-weight:600; font-size:0.9rem; }
+  .varco-meta { font-size:0.76rem; color: var(--muted); display:flex; align-items:center; gap:0.4rem; }
+  .varco-actions { margin-left:auto; }
+  .varco-actions button { padding:0.35rem 0.7rem; font-size:0.82rem; }
+
+  .chart-bars { display:flex; align-items:flex-end; gap:0.6rem; height:120px; padding-top:0.5rem; }
+  .chart-col { flex:1; display:flex; flex-direction:column; align-items:center; gap:0.4rem; height:100%; justify-content:flex-end; }
+  .chart-stack { width:100%; max-width:28px; display:flex; flex-direction:column-reverse; border-radius:4px; overflow:hidden; background: rgba(255,255,255,0.03); min-height:2px; }
+  .chart-seg-ok { background: var(--accent); width:100%; }
+  .chart-seg-err { background: var(--err); width:100%; }
+  .chart-label { font-size:0.7rem; color: var(--muted); }
+
+  .chart-legenda { display:flex; gap:1rem; font-size:0.74rem; color: var(--muted); margin-bottom:0.2rem; }
+  .chart-legenda i { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:0.3rem; }
+  .chart-num { font-size:0.68rem; color: var(--muted); min-height:0.9rem; font-variant-numeric: tabular-nums; }
+  .chart-bars { height:140px; }
+  .motivo-row { display:flex; align-items:center; gap:0.75rem; padding:0.4rem 0; color: var(--text); text-decoration:none; font-size:0.86rem; }
+  .motivo-row:hover .motivo-nome { color: var(--accent); }
+  .motivo-nome { flex:0 0 42%; min-width:0; }
+  .motivo-barra { flex:1; height:8px; background: rgba(255,255,255,0.05); border-radius:4px; overflow:hidden; }
+  .motivo-barra span { display:block; height:100%; background: var(--err); border-radius:4px; }
+  .motivo-n { font-variant-numeric: tabular-nums; font-weight:600; min-width:1.6rem; text-align:right; }
+  .card h2 { margin-top:0; font-size:1rem; display:flex; align-items:center; gap:0.5rem; }
+  .card-foot-link { font-size:0.8rem; }
+</style>
+
+<div class="dash-header">
+  <div>
+    <h1>{{ t("Dashboard") }}</h1>
+    <span class="muted">{{ oggi_label }}</span>
+  </div>
+  <div>{{ scarica_dati_button(request, '/') }}</div>
+</div>
+
+<div class="stat-grid" style="margin-bottom:1.25rem;">
+  <div class="stat-card" style="animation-delay:0.00s">
+    {# L'id/swap-oob sta sul div interno, non su questo .stat-card: così il
+       contenitore (con la sua animazione di ingresso) resta lo stesso nodo
+       DOM a ogni polling e non "flicka" rifacendo l'animazione ogni volta —
+       solo il contenuto viene aggiornato. #}
+    <div id="varchi-stat-live-body">
+      <div class="stat-label"><span class="live-dot {{ '' if varchi_offline|length == 0 else 'off' }}"></span> {{ t("Varchi online") }}</div>
+      <div class="stat-value">{{ varchi|length - varchi_offline|length }} / {{ varchi|length }}</div>
+      <div class="stat-sub">{{ t("%(p1)s offline", p1=varchi_offline|length) }}</div>
+    </div>
+  </div>
+  <div class="stat-card" style="animation-delay:0.03s">
+    <div class="stat-label">{{ t("Passaggi oggi") }}</div>
+    <div class="stat-value">{{ passaggi_oggi }}</div>
+    <div class="stat-sub">{{ t("eventi registrati da mezzanotte") }}</div>
+  </div>
+  <div class="stat-card" style="animation-delay:0.06s">
+    <div class="stat-label">{{ t("Accessi negati oggi") }}</div>
+    <div class="stat-value" style="color: {{ 'var(--err)' if negati_oggi else 'var(--text)' }}">{{ negati_oggi }}</div>
+    <div class="stat-sub">{{ t("su %(p1)s passaggi totali", p1=passaggi_oggi) }}</div>
+  </div>
+  {% if presenze_attive %}
+  <div class="stat-card" style="animation-delay:0.08s">
+    <div class="stat-label">{{ t("Dentro adesso") }}</div>
+    <div class="stat-value">{{ dentro_n }}</div>
+    <div class="stat-sub"><a href="/?elenco=1" class="card-foot-link">{{ t("vedi l'elenco →") }}</a></div>
+  </div>
+  {% endif %}
+  <div class="stat-card" style="animation-delay:0.09s">
+    <div class="stat-label">{{ t("Alert attivi") }}</div>
+    <div class="stat-value" style="color: {{ 'var(--warning)' if alert|length else 'var(--text)' }}">{{ alert|length }}</div>
+    <div class="stat-sub"><a href="/alert" class="card-foot-link">{{ t("vedi tutti →") }}</a></div>
+  </div>
+</div>
+
+<div class="dash-grid">
+  <div>
+    <div class="card">
+      <h2>{{ t("Passaggi in diretta") }}</h2>
+      {% for e in eventi %}
+      {% set etichetta, classe = esito_info.get(e.esito, (e.esito.value, 'err')) %}
+      <div class="feed-row">
+        <div class="feed-icon {{ classe }}">
+          {% if classe == 'ok' %}
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5l3 3 6-6.5"/></svg>
+          {% elif classe == 'err' %}
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l7 7M11 4l-7 7"/></svg>
+          {% else %}
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 1.5v7l4.5 2.5"/></svg>
+          {% endif %}
+        </div>
+        <div class="feed-main">
+          <div class="feed-title">{{ e.varco.nome if e.varco else (e.varco_nome or "—") }}</div>
+          <div class="feed-sub">{{ etichetta }}{% if e.dettaglio %} &middot; {{ e.dettaglio }}{% endif %}{% if e.media_codice %} &middot; <span class="mono">{{ e.media_codice }}</span>{% endif %}{% if e.persona %} &middot; {{ e.persona.nome }} {{ e.persona.cognome }}{% endif %}</div>
+        </div>
+        <div class="feed-time">{{ e.timestamp|ora("%H:%M:%S") }}</div>
+      </div>
+      {% else %}
+      <p class="muted">{{ t("Nessun evento ancora registrato.") }}</p>
+      {% endfor %}
+      {% if eventi %}
+      <div style="margin-top:0.75rem"><a href="/monitoraggio" class="card-foot-link">{{ t("vedi tutto il monitoraggio →") }}</a></div>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2>{{ t("Ultimi 7 giorni") }}</h2>
+      <div class="chart-legenda"><span><i class="chart-seg-ok"></i> {{ t("concessi") }}</span><span><i class="chart-seg-err"></i> {{ t("negati") }}</span></div>
+      <div class="chart-bars" role="img" aria-label="{{ t('Passaggi degli ultimi 7 giorni') }}: {% for g in grafico %}{{ t('%(l)s %(d)s %(c)s concessi e %(n)s negati', l=g.label, d=g.data, c=g.concessi, n=g.negati) }}{{ '; ' if not loop.last }}{% endfor %}">
+        {% for g in grafico %}
+        <div class="chart-col" title="{{ t('%(p1)s %(p2)s: %(p3)s concessi, %(p4)s negati', p1=g.label, p2=g.data, p3=g.concessi, p4=g.negati) }}">
+          <div class="chart-num">{{ g.totale or '' }}</div>
+          <div class="chart-stack" style="height:{{ (g.totale / massimo_grafico * 100)|round(0, 'floor')|int }}%">
+            {% if g.negati %}<div class="chart-seg-err" style="flex:{{ g.negati }} 0 0"></div>{% endif %}
+            {% if g.concessi %}<div class="chart-seg-ok" style="flex:{{ g.concessi }} 0 0"></div>{% endif %}
+          </div>
+          <div class="chart-label">{{ g.label }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>{{ t("Accessi negati oggi, per motivo") }}</h2>
+      {% for m in motivi %}
+      <a class="motivo-row" href="/monitoraggio?esito={{ m.nome }}&amp;da={{ oggi_iso }}">
+        <span class="motivo-nome">{{ m.etichetta }}</span>
+        <span class="motivo-barra"><span style="width:{{ (m.n / massimo_motivi * 100)|round|int }}%"></span></span>
+        <span class="motivo-n">{{ m.n }}</span>
+      </a>
+      {% else %}
+      <p class="muted" style="margin:0">{% if passaggi_oggi %}{{ t("Nessun accesso negato oggi.") }}{% else %}{{ t("Nessun passaggio oggi.") }}{% endif %}</p>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <h2>{{ t("Varchi — azioni rapide") }}</h2>
+      <div id="varchi-azioni-live" hx-get="/dashboard/varchi-live" hx-trigger="every 4s" hx-swap="outerHTML">
+        {% include "_dashboard_varchi_azioni_corpo.html" %}
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>{{ t("Alert recenti") }}</h2>
+      {% for a in alert[:5] %}
+      <div class="feed-row">
+        <div class="feed-icon {{ 'err' if a.livello == 'error' else 'ok' }}" style="{% if a.livello == 'warning' %}background: rgba(251,191,36,0.15); color: var(--warning);{% endif %}">
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 1.8c-1.8 0-3 1.4-3 3.3 0 2.5-.5 3.5-1.5 4.7h9c-1-1.2-1.5-2.2-1.5-4.7 0-1.9-1.2-3.3-3-3.3Z"/><path d="M5.8 11.5a1.7 1.7 0 0 0 3.4 0"/></svg>
+        </div>
+        <div class="feed-main">
+          <div class="feed-title">{{ a.titolo }}</div>
+          <div class="feed-sub">{{ a.descrizione }}</div>
+        </div>
+      </div>
+      {% else %}
+      <p class="muted">{{ t("Nessun alert attivo.") }}</p>
+      {% endfor %}
+      {% if alert %}
+      <div style="margin-top:0.75rem"><a href="/alert" class="card-foot-link">{{ t("vedi tutti gli alert →") }}</a></div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block overlay %}
+{% if elenco_aperto %}{% include "_dentro_drawer.html" %}{% endif %}
+{% endblock %}

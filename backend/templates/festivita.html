@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% from "_macros.html" import aiuto %}
+{% block title %}{{ t("Festività") }}{% endblock %}
+{% block content %}
+<p class="muted" style="margin:0 0 0.4rem"><a href="/fasce-orarie">{{ t("← Fasce orarie") }}</a></p>
+<header class="page-head"><h1>{{ t("Festività") }}{% call aiuto() %}{{ t("Nei festivi le fasce usano la riga «Festivi». Se è vuota, la fascia non vale.") }}{% endcall %}</h1></header>
+
+{% set e = request.query_params.get('errore') %}
+{% if e %}<div class="flash-banner err" role="alert">
+  {% if e == 'data' %}{{ t("Data non valida.") }}{% elif e == 'nome' %}{{ t("Scrivi un nome per la festività.") }}{% else %}{{ t("Anno non valido.") }}{% endif %}
+</div>{% endif %}
+{% if request.query_params.get('importate') is not none %}
+<div class="flash-banner ok" role="status">{{ t("Festività importate: %(p1)s nuove.", p1=request.query_params.get('importate')) }}</div>
+{% endif %}
+
+<div class="card">
+  <h2 style="margin-top:0; font-size:1rem">{{ t("Aggiungi") }}</h2>
+  <form method="post" action="/festivita" style="display:flex; gap:0.6rem; flex-wrap:wrap; align-items:flex-end">
+    <label class="muted" style="font-size:0.78rem">{{ t("Data") }}<br><input type="date" name="data" required></label>
+    <label class="muted" style="font-size:0.78rem">{{ t("Nome") }}<br><input type="text" name="nome" required placeholder="{{ t('es. Santo patrono') }}" maxlength="100"></label>
+    <label class="muted" style="display:flex; gap:0.4rem; align-items:center"><input type="checkbox" name="ricorrente" value="1"> {{ t("Ogni anno") }}</label>
+    <button type="submit">{{ t("Aggiungi") }}</button>
+  </form>
+  <form method="post" action="/festivita/importa" style="display:flex; gap:0.6rem; flex-wrap:wrap; align-items:flex-end; margin-top:1rem">
+    <label class="muted" style="font-size:0.78rem">{{ t("Festività italiane dell'anno") }}<br><input type="number" name="anno" value="{{ anno }}" min="2000" max="2100" style="width:7rem"></label>
+    <button type="submit" class="ghost">{{ t("Importa") }}</button>
+    {% call aiuto() %}{{ t("Festività nazionali italiane, Pasqua e Pasquetta comprese.") }}{% endcall %}
+  </form>
+</div>
+
+{% macro tabella(titolo, righe, vuoto) %}
+<div class="card" style="padding:0.25rem 0">
+  <div style="padding:0.6rem 1.1rem 0.2rem; font-weight:600">{{ titolo }}</div>
+  <table>
+    {% for r in righe %}
+    <tr>
+      <td style="width:9rem">{{ r.data.strftime('%d/%m/%Y') if not r.ricorrente else r.data.strftime('%d/%m') ~ t(' (ogni anno)') }}</td>
+      <td>{{ r.nome }}</td>
+      <td style="text-align:right">
+        <form method="post" action="/festivita/{{ r.id }}/delete" class="inline"><button type="submit" class="ghost">{{ t("Elimina") }}</button></form>
+      </td>
+    </tr>
+    {% else %}<tr><td class="muted" colspan="3">{{ vuoto }}</td></tr>{% endfor %}
+  </table>
+</div>
+{% endmacro %}
+
+{{ tabella(t('Ogni anno'), ricorrenti, t('Nessuna festività ricorrente. Importa le italiane per partire.')) }}
+{{ tabella(t('Date singole in arrivo'), singole_future, t('Nessuna.')) }}
+{% if singole_passate %}
+<details class="card"><summary class="muted" style="cursor:pointer">{{ t("Date singole passate (%(p1)s)", p1=singole_passate|length) }}</summary>
+  <table>{% for r in singole_passate %}<tr><td style="width:9rem">{{ r.data.strftime('%d/%m/%Y') }}</td><td>{{ r.nome }}</td>
+    <td style="text-align:right"><form method="post" action="/festivita/{{ r.id }}/delete" class="inline"><button type="submit" class="ghost">{{ t("Elimina") }}</button></form></td></tr>{% endfor %}</table>
+</details>
+{% endif %}
+<p class="muted" style="font-size:0.8rem">{{ t("Prossimi festivi mandati ai varchi: %(p1)s", p1=prossime|length) }}{% if prossime %} {{ t("(il primo: %(p1)s/%(p2)s/%(p3)s)", p1=prossime[0][8:10], p2=prossime[0][5:7], p3=prossime[0][:4]) }}{% endif %}.</p>
+{% endblock %}

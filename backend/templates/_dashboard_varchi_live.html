@@ -1,0 +1,22 @@
+{#
+  Risposta del polling htmx /dashboard/varchi-live (ogni 8s). Aggiorna due
+  punti della dashboard in un solo giro:
+  - il contenuto di questo stesso div (sostituito per intero, hx-swap=
+    "outerHTML", quindi deve riportare gli stessi attributi hx-* o il
+    polling si fermerebbe al primo giro);
+  - il contenuto della stat-card "Varchi online" altrove nella pagina,
+    tramite uno swap "out of band" (hx-swap-oob, per id) — un solo
+    round-trip invece di due endpoint separati. L'id dell'oob è il div
+    interno (#varchi-stat-live-body), NON il .stat-card che lo contiene:
+    se si sostituisse l'intero .stat-card, l'elemento verrebbe ricreato da
+    zero a ogni polling e la sua animazione di ingresso ("fade-in-up")
+    ripartirebbe ogni 8s, dando un fastidioso effetto di sfarfallio.
+#}
+<div id="varchi-azioni-live" hx-get="/dashboard/varchi-live" hx-trigger="every 4s" hx-swap="outerHTML">
+  {% include "_dashboard_varchi_azioni_corpo.html" %}
+</div>
+<div id="varchi-stat-live-body" hx-swap-oob="true">
+  <div class="stat-label"><span class="live-dot {{ '' if varchi_offline|length == 0 else 'off' }}"></span> {{ t("Varchi online") }}</div>
+  <div class="stat-value">{{ varchi|length - varchi_offline|length }} / {{ varchi|length }}</div>
+  <div class="stat-sub">{{ t("%(p1)s offline", p1=varchi_offline|length) }}</div>
+</div>

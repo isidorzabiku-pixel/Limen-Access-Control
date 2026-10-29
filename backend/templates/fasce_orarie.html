@@ -1,0 +1,545 @@
+{% extends "base.html" %}
+{% from "_macros.html" import vuoto, aiuto %}
+{% block title %}{{ t("Fasce orarie") }}{% endblock %}
+{% block content %}
+<header class="page-head">
+  <h1>{{ t("Fasce orarie") }}</h1>
+  <a href="/festivita" class="muted page-head-right">{{ t("Festività →") }}</a>
+</header>
+
+{% if request.query_params.get('incomplete') not in (None, '', '0') %}
+<div class="flash-banner warn" role="status">
+  {% if request.query_params.get('incomplete') == '1' %}{{ t("Fascia eliminata. 1 regola è rimasta senza fascia: non concede accessi finché non scegli un'altra fascia nelle Regole di accesso.") }}{% else %}{{ t("Fascia eliminata. %(n)s regole sono rimaste senza fascia: non concedono accessi finché non scegli un'altra fascia nelle Regole di accesso.", n=request.query_params.get('incomplete')) }}{% endif %}
+</div>
+{% endif %}
+{% if request.query_params.get('errore') == 'nome_duplicato' %}
+<div class="flash-banner err" role="alert">{{ t("Esiste già una fascia oraria con questo nome. Scegline un altro.") }}</div>
+{% endif %}
+
+<details class="card card-toggle" {{ "open" if request.query_params.get('errore') == 'nome_duplicato' and not fascia_aperta }}>
+  <summary><span class="toggle-plus">+</span> {{ t("Nuova fascia") }}</summary>
+  <div class="card-toggle-body">
+    <form method="post" action="/fasce-orarie">
+      <input type="text" name="nome" placeholder="{{ t('Nome (es. Orario ufficio)') }}" required>
+      <button type="submit">{{ t("Crea") }}</button>
+    </form>
+  </div>
+</details>
+
+{% if fasce %}
+<div class="card" style="padding:0; overflow-x:auto;">
+  <table class="tabella-card fasce-lista">
+    <tr><th>{{ t("Fascia") }}</th><th>{{ t("Quando vale") }}</th><th>{{ t("Usata da") }}</th><th></th></tr>
+    {% for f in fasce %}
+    {% set n_uso = uso_fasce.get(f.id, 0) %}
+    <tr class="riga-fascia" onclick="location.href='/fasce-orarie?apri={{ f.id }}'">
+      <td>
+        <strong>{{ f.nome }}</strong>
+        <br><span class="muted">{{ tipi[f.id] }}</span>
+      </td>
+      <td data-label="Quando vale">{{ riepiloghi[f.id] }}</td>
+      <td data-label="Usata da" class="muted">{% if n_uso %}{{ n_uso }} {{ t('regola') if n_uso == 1 else t('regole') }}{% else %}&mdash;{% endif %}</td>
+      <td style="text-align:right"><span class="riga-apri">&rsaquo;</span></td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% else %}
+<div class="card">{{ vuoto(t('Ancora nessuna fascia oraria'), t('Una fascia dice in quali giorni e ore vale un accesso (es. «Ufficio 8-18»). Senza fascia, la regola vale sempre.'), t('Crea la prima fascia'), '#') }}</div>
+{% endif %}
+
+<style>
+  .fasce-lista td { vertical-align: middle; }
+  .riga-fascia { cursor: pointer; }
+  .riga-fascia:hover td { background: rgba(255,255,255,0.03); }
+  .riga-apri { color: var(--muted); font-size: 1.4rem; text-decoration: none; padding: 0 0.4rem; }
+  .riga-fascia:hover .riga-apri { color: var(--text); }
+
+  /* Griglia compatta: 7 righe sottili, 48 celle da mezz'ora che si adattano alla larghezza del drawer. */
+  .drawer-fascia { width: min(760px, 96vw); }
+  .fascia-nome { font-size: 1.15rem; font-weight: 700; background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 0.15rem 0.45rem; margin: 0 0 0 -0.45rem; width: 100%; color: var(--text); }
+  .fascia-nome:hover, .fascia-nome:focus { border-color: rgba(139,155,180,0.35); background: rgba(255,255,255,0.03); }
+  .fascia-et { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+
+  .fascia-barra { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.55rem; margin: 0 0 0.6rem; font-size: 0.85rem; color: var(--muted); }
+  .fascia-barra select, .fascia-barra button { margin: 0; padding: 0.3rem 0.5rem; font-size: 0.85rem; width: auto; }
+  .fascia-barra .sep { flex: 1; }
+
+  .orario-wrap { position: relative; overflow-x: auto; background: var(--oc-sfondo); border-radius: 12px; padding: 0.7rem 0.75rem 0.7rem 0.5rem; }
+  .orario-grid { display: flex; flex-direction: column; gap: 3px; user-select: none; min-width: 520px; }
+  .orario-ruler { display: flex; align-items: flex-end; height: 34px; margin-bottom: 2px; }
+  .orario-corner { width: var(--oc-label-w); flex-shrink: 0; }
+  .orario-fine { width: var(--oc-ore-w); flex-shrink: 0; }
+  .orario-ticks { display: flex; flex: 1; height: 100%; }
+  .orario-tick { flex: 1 1 0; position: relative; }
+  .orario-tick .tick-label {
+    position: absolute; left: 0; bottom: 2px; transform-origin: left bottom; transform: rotate(-45deg);
+    font-size: 0.64rem; font-family: var(--font-mono); color: var(--muted); white-space: nowrap;
+  }
+  :root { --oc-label-w: 34px; --oc-ore-w: 38px; --oc-sfondo: color-mix(in srgb, var(--card-raised) 95%, white); }
+
+  .orario-riga { display: flex; align-items: center; }
+  .orario-riga.riga-festivi { margin-top: 7px; padding-top: 7px; border-top: 1px dashed rgba(139,155,180,0.3); }
+  .orario-giorno { width: var(--oc-label-w); flex-shrink: 0; font-size: 0.74rem; color: var(--muted); transition: color .15s; }
+  .orario-riga.row-active .orario-giorno { color: var(--text); font-weight: 700; }
+  .orario-ore { width: var(--oc-ore-w); flex-shrink: 0; text-align: right; font-size: 0.72rem; font-family: var(--font-mono); color: var(--muted); }
+  .orario-celle { display: flex; flex: 1; border-radius: 6px; overflow: hidden; background: rgba(255,255,255,0.05); }
+  .orario-cella {
+    flex: 1 1 0; height: 22px; cursor: pointer; position: relative; touch-action: manipulation;
+    border-left: 1px solid rgba(139,155,180,0.16);
+    transition: background-color .1s ease;
+  }
+  .orario-cella.tick-ora { border-left-color: rgba(139,155,180,0.38); }
+  .orario-cella:first-child { border-left-color: transparent; }
+  .orario-cella:hover { background: rgba(56,189,248,0.28); }
+  .orario-cella.selezionata { background: var(--accent); border-left-color: rgba(5,32,47,0.3); }
+  .orario-cella.selezionata.tick-ora { border-left-color: rgba(5,32,47,0.55); }
+  .orario-cella.selezionata:hover { background: #5cc9fb; }
+  .orario-cella.selezionata.run-start { border-left-color: transparent; border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
+  .orario-cella.selezionata.run-end { border-top-right-radius: 6px; border-bottom-right-radius: 6px; }
+  .orario-cella.anchor { box-shadow: inset 0 0 0 2px #fff; z-index: 1; }
+
+  .orario-tooltip {
+    position: fixed; transform: translateX(-50%); background: var(--card-raised); border: 1px solid var(--accent); border-radius: 8px;
+    padding: 0.35rem 0.65rem; font-size: 0.8rem; color: var(--text); white-space: nowrap; pointer-events: none; opacity: 0;
+    transition: opacity .1s ease; box-shadow: 0 8px 20px rgba(0,0,0,0.5); z-index: 95; display: flex; align-items: center; gap: 0.45rem;
+  }
+  .orario-tooltip.visibile { opacity: 1; }
+  .orario-tooltip .tooltip-giorno { color: var(--muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  .orario-tooltip .tooltip-ore { font-family: var(--font-mono); font-weight: 700; color: var(--accent); }
+  .orario-tooltip::after { content: ""; position: absolute; left: 50%; top: 100%; transform: translateX(-50%); border: 5px solid transparent; border-top-color: var(--accent); }
+  .orario-tooltip.sotto::after { top: auto; bottom: 100%; border-top-color: transparent; border-bottom-color: var(--accent); }
+
+  .riepilogo-fascia { margin-top: 0.7rem; font-size: 0.88rem; display: flex; gap: 0.8rem; flex-wrap: wrap; align-items: baseline; }
+  .riepilogo-fascia.modificato::after { content: "non salvato"; color: var(--warning); font-size: 0.75rem; margin-left: auto; }
+  .fascia-festivi { margin: 0.9rem 0 0; display: flex; align-items: center; gap: 0.5rem; font-size: 0.88rem; }
+  .fascia-festivi input { margin: 0; width: auto; }
+  .fascia-piede { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; margin-top: 1.4rem; padding-top: 1rem; border-top: 1px solid rgba(139,155,180,0.18); }
+  .fascia-piede button { margin: 0; }
+  .fascia-piede .sep { flex: 1; }
+  .orario-giorno, .orario-corner { position: sticky; left: 0; z-index: 2; background: var(--oc-sfondo); }
+  @media (max-width: 720px) { .orario-grid { min-width: 500px; } .drawer-fascia { width: 100vw; } }
+  @media (pointer: coarse) { .orario-cella { height: 30px; } }
+</style>
+{% endblock %}
+
+{% block overlay %}
+{% if fascia_aperta %}
+{% set f = fascia_aperta %}
+{% set n_uso = uso_fasce.get(f.id, 0) %}
+<a href="/fasce-orarie" class="drawer-backdrop" aria-label="{{ t('Chiudi') }}"></a>
+<aside class="drawer drawer-fascia">
+  <form id="form-{{ f.id }}" action="/fasce-orarie/{{ f.id }}/griglia" method="post">
+    <div class="drawer-header">
+      <div style="min-width:0; flex:1">
+        <div class="fascia-et">{{ t("Fascia oraria") }}</div>
+        <input type="text" name="nome" class="fascia-nome" value="{{ f.nome }}" maxlength="100" required aria-label="{{ t('Nome della fascia') }}">
+      </div>
+      <a href="/fasce-orarie" class="drawer-close" aria-label="{{ t('Chiudi') }}">&#10005;</a>
+    </div>
+
+    {% if request.query_params.get('errore') == 'nome_duplicato' %}
+    <div class="flash-banner err" role="alert">{{ t("Esiste già una fascia con questo nome.") }}</div>
+    {% elif request.query_params.get('salvata') %}
+    <div class="flash-banner ok" role="status">{{ t("Fascia salvata.") }}</div>
+    {% endif %}
+
+    <div class="fascia-barra">
+      <span>{{ t("Imposta") }}</span>
+      <select id="quick-giorno-{{ f.id }}" aria-label="{{ t('Giorni') }}">
+        <option value="all">{{ t("tutti i giorni") }}</option>
+        <option value="feriali">Lun-Ven</option>
+        <option value="weekend">Sab-Dom</option>
+        {% for g in range(7) %}<option value="{{ g }}">{{ giorni_estesi[g] }}</option>{% endfor %}
+        <option value="7">{{ t("Festivi") }}</option>
+      </select>
+      <span>{{ t("dalle") }}</span>
+      <select id="quick-dalle-{{ f.id }}" aria-label="{{ t('Dalle') }}">{% for s in range(48) %}<option value="{{ etichette_slot[s] }}" {{ 'selected' if s == 16 }}>{{ etichette_slot[s] }}</option>{% endfor %}</select>
+      <span>{{ t("alle") }}</span>
+      <select id="quick-alle-{{ f.id }}" aria-label="{{ t('Alle') }}">{% for s in range(1, 49) %}<option value="{{ etichette_slot[s] }}" {{ 'selected' if s == 36 }}>{{ etichette_slot[s] }}</option>{% endfor %}</select>
+      <button type="button" onclick="applicaRapido({{ f.id }})">{{ t("Applica") }}</button>
+    </div>
+    <div class="fascia-barra">
+      <span>{{ t("Copia") }}</span>
+      <select id="copia-da-{{ f.id }}" aria-label="{{ t('Giorno da copiare') }}">{% for g in range(7) %}<option value="{{ g }}">{{ giorni_estesi[g] }}</option>{% endfor %}<option value="7">{{ t("Festivi") }}</option></select>
+      <span>{{ t("su") }}</span>
+      <select id="copia-su-{{ f.id }}" aria-label="{{ t('Destinazione') }}">
+        <option value="altri">{{ t("tutti gli altri") }}</option>
+        <option value="feriali">Lun-Ven</option>
+        <option value="weekend">Sab-Dom</option>
+        <option value="festivi">{{ t("Festivi") }}</option>
+      </select>
+      <button type="button" class="ghost" onclick="copiaGiorno({{ f.id }})">{{ t("Copia") }}</button>
+    </div>
+
+    <div class="orario-wrap">
+      <div class="orario-grid" data-fascia="{{ f.id }}">
+        <div class="orario-ruler">
+          <div class="orario-corner"></div>
+          <div class="orario-ticks">
+            {% for h in ore %}<div class="orario-tick">{% if h % 4 == 0 %}<span class="tick-label">{{ etichette_ore[h] }}</span>{% endif %}</div>{% endfor %}
+          </div>
+          <div class="orario-fine"></div>
+        </div>
+        {% for giorno_idx in range(8) %}
+        <div class="orario-riga {{ 'riga-festivi' if giorno_idx == 7 }}" data-giorno="{{ giorno_idx }}" data-giorno-nome="{{ giorni_estesi[giorno_idx] if giorno_idx < 7 else t('Giorni festivi') }}"
+             onmouseenter="evidenziaRiga(this, true)" onmouseleave="evidenziaRiga(this, false); nascondiTooltipSeNonInTrascinamento()">
+          <div class="orario-giorno">{{ giorni[giorno_idx] if giorno_idx < 7 else t('Fest.') }}</div>
+          <div class="orario-celle">
+            {% for h in ore %}
+            <div class="orario-cella {{ 'tick-ora' if h % 2 == 0 else '' }} {{ 'selezionata' if griglie[f.id][giorno_idx][h] else '' }}"
+                 data-giorno="{{ giorno_idx }}" data-ora="{{ h }}"
+                 onmousedown="iniziaTrascinamento(this, {{ f.id }})"
+                 onmouseenter="passaggioSuCella(this, {{ f.id }})"
+                 onclick="clickCella(this, {{ f.id }})"></div>
+            {% endfor %}
+          </div>
+          <div class="orario-ore"></div>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="orario-tooltip" id="tooltip-{{ f.id }}"></div>
+    </div>
+    <div id="hidden-{{ f.id }}"></div>
+
+    <div class="riepilogo-fascia" id="riepilogo-{{ f.id }}" aria-live="polite">
+      <strong class="riepilogo-testo">{{ riepiloghi[f.id] }}</strong>
+    </div>
+
+
+    <div class="fascia-piede">
+      <button type="submit">{{ t("Salva") }}</button>
+      <button type="button" class="ghost" onclick="pulisciGriglia({{ f.id }})">{{ t("Svuota griglia") }}</button>
+      <span class="sep"></span>
+      <button type="submit" class="danger" form="elimina-{{ f.id }}" data-conferma="{{ t('Stai per eliminare la fascia oraria «%(nome)s».', nome=f.nome) }}{% if n_uso %} {{ t('Le %(n)s regole che la usano restano, ma senza fascia non concedono accessi finché non ne scegli un\'altra.', n=n_uso) }}{% endif %} {{ t('L\'operazione non è reversibile.') }}"
+              data-conferma-titolo="{{ t('Eliminare la fascia oraria?') }}"
+              data-conferma-impatto="{{ t('Regole che resteranno senza fascia: %(p1)s', p1=n_uso) }}"
+              data-conferma-azione="{{ t('Elimina fascia') }}">{{ t("Elimina fascia") }}</button>
+    </div>
+  </form>
+  <form id="elimina-{{ f.id }}" action="/fasce-orarie/{{ f.id }}/delete" method="post"></form>
+</aside>
+<script>
+  // Stato dell'ancora (prima cella cliccata) per ciascuna fascia/riga, in attesa del secondo click.
+  const ancore = {};
+
+  // Stato del trascinamento (click e trascina per "dipingere" più celle di fila).
+  // Il trascinamento resta sempre sulla riga del giorno da cui è partito: muovere
+  // il mouse leggermente in verticale durante il drag non deve più "sporcare"
+  // le righe degli altri giorni.
+  let isDragging = false, dragValue = null, dragMoved = false, dragStartCell = null, dragFasciaId = null;
+  let dragMinOra = null, dragMaxOra = null;
+
+  function iniziaTrascinamento(td, fasciaId) {
+    isDragging = true;
+    dragMoved = false;
+    dragStartCell = td;
+    dragFasciaId = fasciaId;
+    dragValue = !td.classList.contains('selezionata');
+    dragMinOra = dragMaxOra = Number(td.dataset.ora);
+    mostraTooltip(td, fasciaId, dragMinOra, dragMaxOra);
+  }
+
+  // Richiamata su ogni mouseenter di una cella: durante un trascinamento
+  // mostra l'intervallo che si sta "dipingendo"; se c'è un'ancora in attesa
+  // (primo click già fatto, in attesa del secondo) mostra in anteprima
+  // l'intervallo che verrebbe selezionato cliccando qui; altrimenti mostra
+  // solo lo slot sotto il mouse — così in ogni momento è chiaro quali ore
+  // si stanno per toccare, non solo durante il trascinamento vero e proprio.
+  function passaggioSuCella(td, fasciaId) {
+    if (isDragging && fasciaId === dragFasciaId) {
+      trascinaSu(td, fasciaId);
+      return;
+    }
+    const giorno = td.dataset.giorno;
+    const ora = Number(td.dataset.ora);
+    const ancora = ancore[`${fasciaId}_${giorno}`];
+    if (ancora) {
+      const oraAncora = Number(ancora.dataset.ora);
+      mostraTooltip(td, fasciaId, Math.min(oraAncora, ora), Math.max(oraAncora, ora));
+    } else {
+      mostraTooltip(td, fasciaId, ora, ora);
+    }
+  }
+
+  function trascinaSu(td, fasciaId) {
+    if (!isDragging || fasciaId !== dragFasciaId) return;
+    if (td.dataset.giorno !== dragStartCell.dataset.giorno) return;
+    dragMoved = true;
+    selezionaCella(td, fasciaId, dragValue);
+    const ora = Number(td.dataset.ora);
+    dragMinOra = Math.min(dragMinOra, ora);
+    dragMaxOra = Math.max(dragMaxOra, ora);
+    mostraTooltip(td, fasciaId, dragMinOra, dragMaxOra);
+  }
+
+  document.addEventListener('mouseup', () => {
+    if (isDragging && dragMoved && dragStartCell) {
+      selezionaCella(dragStartCell, dragFasciaId, dragValue);
+    }
+    isDragging = false;
+    dragStartCell = null;
+    nascondiTooltip();
+  });
+
+  function evidenziaRiga(rigaEl, attivo) {
+    rigaEl.classList.toggle('row-active', attivo);
+  }
+
+  // Nasconde il tooltip solo se non si sta trascinando (durante il drag il
+  // mouse può uscire per un istante dalla cella/riga senza che l'utente
+  // voglia davvero interrompere la selezione in corso).
+  function nascondiTooltipSeNonInTrascinamento() {
+    if (!isDragging) nascondiTooltip();
+  }
+
+  function etichettaSlot(slot) {
+    if (slot >= 48) return '24:00';
+    const h = Math.floor(slot / 2), m = (slot % 2) * 30;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  }
+
+  function mostraTooltip(td, fasciaId, minOra, maxOra) {
+    const tooltip = document.getElementById(`tooltip-${fasciaId}`);
+    if (!tooltip) return;
+    const riga = td.closest('.orario-riga');
+    const nomeGiorno = riga ? riga.dataset.giornoNome : '';
+    tooltip.innerHTML = `<span class="tooltip-giorno">${nomeGiorno}</span><span class="tooltip-ore">${etichettaSlot(minOra)} → ${etichettaSlot(maxOra + 1)}</span>`;
+    tooltip.classList.add('visibile');
+
+    // position:fixed: coordinate relative alla finestra (getBoundingClientRect
+    // le dà già così), niente calcoli con lo scroll del contenitore.
+    const rectCell = td.getBoundingClientRect();
+    const rectTooltip = tooltip.getBoundingClientRect();
+    const staSopra = (rectCell.top - rectTooltip.height - 10) >= 4;
+    tooltip.classList.toggle('sotto', !staSopra);
+    tooltip.style.left = (rectCell.left + rectCell.width / 2) + 'px';
+    tooltip.style.top = staSopra
+      ? (rectCell.top - rectTooltip.height - 10) + 'px'
+      : (rectCell.bottom + 10) + 'px';
+  }
+
+  function nascondiTooltip() {
+    document.querySelectorAll('.orario-tooltip').forEach(t => t.classList.remove('visibile'));
+  }
+
+  function sincronizzaHidden(td, fasciaId) {
+    const giorno = td.dataset.giorno, ora = td.dataset.ora;
+    const nome = `cella_${giorno}_${ora}`;
+    const contenitore = document.getElementById(`hidden-${fasciaId}`);
+    let input = contenitore.querySelector(`input[name="${nome}"]`);
+    if (td.classList.contains('selezionata')) {
+      if (!input) {
+        input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = nome;
+        input.value = '1';
+        contenitore.appendChild(input);
+      }
+    } else if (input) {
+      input.remove();
+    }
+  }
+
+  // Ricalcola, per una riga, quali celle selezionate sono l'inizio/fine di un
+  // blocco contiguo: serve solo per arrotondare gli angoli del blocco (effetto
+  // "barra continua" invece di tante celle separate).
+  function aggiornaArrotondamenti(form, giorno) {
+    const riga = celleDellaRiga(form, giorno);
+    riga.forEach((cell, i) => {
+      cell.classList.remove('run-start', 'run-end');
+      if (!cell.classList.contains('selezionata')) return;
+      const prev = riga[i - 1], next = riga[i + 1];
+      if (!prev || !prev.classList.contains('selezionata')) cell.classList.add('run-start');
+      if (!next || !next.classList.contains('selezionata')) cell.classList.add('run-end');
+    });
+  }
+
+  function animaPop(td) {
+    td.classList.remove('pop');
+    void td.offsetWidth; // forza il reflow per poter rilanciare l'animazione sulla stessa cella
+    td.classList.add('pop');
+  }
+
+  const riepilogoInAttesa = {};
+  function selezionaCella(td, fasciaId, on) {
+    const cambiato = td.classList.contains('selezionata') !== on;
+    td.classList.toggle('selezionata', on);
+    sincronizzaHidden(td, fasciaId);
+    aggiornaArrotondamenti(document.getElementById(`form-${fasciaId}`), td.dataset.giorno);
+    if (cambiato) {
+      animaPop(td);
+      // Un solo ricalcolo del riepilogo per tutte le celle cambiate nello stesso istante (copia, modello).
+      if (!riepilogoInAttesa[fasciaId]) {
+        riepilogoInAttesa[fasciaId] = true;
+        requestAnimationFrame(() => { riepilogoInAttesa[fasciaId] = false; aggiornaRiepilogo(fasciaId, true); });
+      }
+    }
+  }
+
+  function celleDellaRiga(form, giorno) {
+    return Array.from(form.querySelectorAll(`.orario-cella[data-giorno="${giorno}"]`))
+      .sort((a, b) => Number(a.dataset.ora) - Number(b.dataset.ora));
+  }
+
+  // Click su una cella: il primo click piazza l'ancora, il secondo click sulla
+  // stessa riga riempie l'intervallo fra ancora e cella cliccata (estremi incl.).
+  // Click su una cella già selezionata, senza ancora pendente, la deseleziona.
+  function clickCella(td, fasciaId) {
+    if (dragMoved) { dragMoved = false; return; } // era un trascinamento, non un click singolo
+
+    const form = document.getElementById(`form-${fasciaId}`);
+    const giorno = td.dataset.giorno;
+    const chiave = `${fasciaId}_${giorno}`;
+    const ancora = ancore[chiave];
+
+    if (ancora && ancora !== td) {
+      const riga = celleDellaRiga(form, giorno);
+      const oraA = Number(ancora.dataset.ora), oraB = Number(td.dataset.ora);
+      const min = Math.min(oraA, oraB), max = Math.max(oraA, oraB);
+      riga.forEach(cell => {
+        const ora = Number(cell.dataset.ora);
+        if (ora >= min && ora <= max) selezionaCella(cell, fasciaId, true);
+      });
+      ancora.classList.remove('anchor');
+      delete ancore[chiave];
+      return;
+    }
+
+    if (td.classList.contains('selezionata')) {
+      selezionaCella(td, fasciaId, false);
+      if (ancora) { ancora.classList.remove('anchor'); delete ancore[chiave]; }
+      return;
+    }
+
+    td.classList.add('anchor');
+    ancore[chiave] = td;
+  }
+
+  // Converte "08:30" nell'indice di slot (0..47, 30 minuti ciascuno).
+  function tempoASlot(hhmm) {
+    const [hh, mm] = hhmm.split(':').map(Number);
+    return hh * 2 + (mm >= 30 ? 1 : 0);
+  }
+
+  function applicaRapido(fasciaId) {
+    const form = document.getElementById(`form-${fasciaId}`);
+    const giornoSel = document.getElementById(`quick-giorno-${fasciaId}`).value;
+    const dalle = document.getElementById(`quick-dalle-${fasciaId}`).value;
+    const alle = document.getElementById(`quick-alle-${fasciaId}`).value;
+    if (!dalle || !alle) return;
+
+    const slotInizio = tempoASlot(dalle);
+    // "Alle 18:00" vuol dire fino alle 17:30 incluse: ultimo slot pieno = slotFine - 1,
+    // ma se l'utente scrive la stessa ora di inizio e fine consideriamo almeno uno slot.
+    let slotFine = tempoASlot(alle) - 1;
+    if (slotFine < slotInizio) slotFine = slotInizio;
+
+    const giorniDaApplicare = giornoSel === 'all' ? [0, 1, 2, 3, 4, 5, 6] : giornoSel === 'feriali' ? [0, 1, 2, 3, 4] : giornoSel === 'weekend' ? [5, 6] : [parseInt(giornoSel, 10)];
+    giorniDaApplicare.forEach(giorno => {
+      celleDellaRiga(form, giorno).forEach(cell => {
+        const slot = Number(cell.dataset.ora);
+        if (slot >= slotInizio && slot <= slotFine) selezionaCella(cell, fasciaId, true);
+      });
+    });
+  }
+
+  function pulisciGriglia(fasciaId) {
+    const form = document.getElementById(`form-${fasciaId}`);
+    form.querySelectorAll('.orario-cella.selezionata').forEach(td => selezionaCella(td, fasciaId, false));
+    form.querySelectorAll('.orario-cella.anchor').forEach(td => td.classList.remove('anchor'));
+    Object.keys(ancore).forEach(k => { if (k.startsWith(`${fasciaId}_`)) delete ancore[k]; });
+  }
+
+
+  // ---- Riepilogo, copia giorno, modelli ----
+  const NOMI_GIORNI = {{ giorni|tojson }}.concat([T('Festivi')]);
+  const etichettaOra = s => s >= 48 ? '24:00' : etichettaSlot(s);
+
+  function intervalliGiorno(form, giorno) {
+    const out = []; let inizio = null;
+    celleDellaRiga(form, giorno).forEach((c, i) => {
+      const on = c.classList.contains('selezionata');
+      if (on && inizio === null) inizio = i;
+      if (!on && inizio !== null) { out.push([inizio, i]); inizio = null; }
+    });
+    if (inizio !== null) out.push([inizio, 48]);
+    return out;
+  }
+
+  function aggiornaRiepilogo(fasciaId, modificato) {
+    const form = document.getElementById(`form-${fasciaId}`);
+    const box = document.getElementById(`riepilogo-${fasciaId}`);
+    if (!form || !box) return;
+    const per = [], chiavi = [];
+    let slot = 0;
+    for (let g = 0; g < 8; g++) {
+      const iv = intervalliGiorno(form, g);
+      per.push(iv); chiavi.push(JSON.stringify(iv));
+      iv.forEach(([a, b]) => slot += b - a);
+    }
+    let testo;
+    if (!slot) testo = T('Mai (fascia vuota)');
+    else if (per.every(iv => iv.length === 1 && iv[0][0] === 0 && iv[0][1] === 48)) testo = T('Sempre');
+    else {
+      const gruppi = [];
+      for (let g = 0; g < 7; g++) {
+        if (!per[g].length) continue;
+        const ultimo = gruppi[gruppi.length - 1];
+        if (ultimo && ultimo.fine === g - 1 && ultimo.chiave === chiavi[g]) ultimo.fine = g;
+        else gruppi.push({ inizio: g, fine: g, chiave: chiavi[g], iv: per[g] });
+      }
+      testo = gruppi.map(x => (x.inizio === x.fine ? NOMI_GIORNI[x.inizio] : `${NOMI_GIORNI[x.inizio]}-${NOMI_GIORNI[x.fine]}`) + ' ' +
+        x.iv.map(([a, b]) => `${etichettaOra(a)}-${etichettaOra(b)}`).join(', ')).join('; ');
+      testo += '; ' + (per[7].length ? T('Festivi') + ' ' + per[7].map(([a, b]) => `${etichettaOra(a)}-${etichettaOra(b)}`).join(', ') : T('non nei festivi'));
+    }
+    box.querySelector('.riepilogo-testo').textContent = testo;
+    for (let g = 0; g < 8; g++) {
+      const h = per[g].reduce((t, [x, y]) => t + y - x, 0) / 2;
+      const el = form.querySelector(`.orario-riga[data-giorno="${g}"] .orario-ore`);
+      if (el) el.textContent = h ? String(h).replace('.', ',') + ' h' : '';
+    }
+    if (modificato) box.classList.add('modificato');
+  }
+
+  function impostaGiorno(form, fasciaId, giorno, intervalli) {
+    celleDellaRiga(form, giorno).forEach(c => {
+      const s = Number(c.dataset.ora);
+      selezionaCella(c, fasciaId, intervalli.some(([a, b]) => s >= a && s < b));
+    });
+  }
+
+  function copiaGiorno(fasciaId) {
+    const form = document.getElementById(`form-${fasciaId}`);
+    const da = Number(document.getElementById(`copia-da-${fasciaId}`).value);
+    const su = document.getElementById(`copia-su-${fasciaId}`).value;
+    const sorgente = intervalliGiorno(form, da);
+    const target = [0, 1, 2, 3, 4, 5, 6, 7].filter(g => g !== da && (su === 'altri' ? g < 7 : su === 'feriali' ? g < 5 : su === 'weekend' ? (g === 5 || g === 6) : g === 7));
+    target.forEach(g => impostaGiorno(form, fasciaId, g, sorgente));
+  }
+
+  // Scroll iniziale poco prima delle 06:00 se la griglia e' piu' larga dello schermo (telefono): le ore di notte
+  // di solito sono vuote e nascondono la parte che interessa.
+  function scorriAlleSei() {
+    document.querySelectorAll('.orario-wrap').forEach(w => {
+      if (w.scrollWidth <= w.clientWidth + 4) return;
+      w.scrollLeft = 11 * (w.scrollWidth / 48);
+    });
+  }
+  requestAnimationFrame(scorriAlleSei);
+
+  // Al caricamento, arrotonda i blocchi già selezionati (stato salvato sul server).
+  document.querySelectorAll('form[id^="form-"]').forEach(form => {
+    for (let g = 0; g < 8; g++) aggiornaArrotondamenti(form, g);
+    // Le celle già selezionate sul server devono partire insieme al form: i campi nascosti (uno per cella) si
+    // creano solo toccando le celle, quindi senza questo un salvataggio senza modifiche azzera la fascia, e uno
+    // con una modifica perde tutto il resto. Rifatti anche all'invio, per sicurezza.
+    const fasciaId = form.id.replace('form-', '');
+    const sincronizzaTutte = () => form.querySelectorAll('.orario-cella').forEach(td => sincronizzaHidden(td, fasciaId));
+    sincronizzaTutte();
+    form.addEventListener('submit', sincronizzaTutte);
+    aggiornaRiepilogo(fasciaId, false);
+  });
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,311 @@
+{# Popup "Funzionamento" del varco: lettori, uscite, ingressi, avvisi. Si apre con ?funz=1 sopra il drawer
+   del varco; la pagina si ridisegna in JS dal JSON qui sotto e il Salva manda un solo JSON al server,
+   che lo controlla di nuovo (routers/admin.py salva_funzionamento). Gli script di base.html (icone "i",
+   focus nel dialogo, Esc) valgono anche qui. #}
+{% set chiudi_url = '/varchi?apri=' ~ v.id ~ '&scheda=controllo' %}
+<a href="{{ chiudi_url }}" class="funz-velo" aria-label="{{ t('Chiudi senza salvare') }}"></a>
+<section class="funz-popup" role="dialog" aria-modal="true" aria-labelledby="funz-titolo">
+  <div class="p-head">
+    <div style="min-width:0">
+      <h2 id="funz-titolo">{{ t("Funzionamento") }} <span class="muted" style="font-weight:500">· {{ v.nome }}</span></h2>
+      <p class="muted">{{ t("Cosa è collegato a questo varco e come si comporta.") }}</p>
+    </div>
+    <a href="{{ chiudi_url }}" class="drawer-close" aria-label="{{ t('Chiudi senza salvare') }}">&#10005;</a>
+  </div>
+  <div class="p-corpo" id="funz-corpo"></div>
+  <form class="p-foot" id="funz-form" method="post" action="/varchi/{{ v.id }}/funzionamento">
+    <input type="hidden" name="dati" value="">
+    <input type="hidden" name="modalita" value="">
+    <input type="hidden" name="sblocco_fascia_id" value="">
+    <span class="stato muted" id="funz-stato"></span>
+    <a href="{{ chiudi_url }}" class="funz-annulla">{{ t("Annulla") }}</a>
+    <button type="submit" id="funz-salva">{{ t("Salva") }}</button>
+  </form>
+</section>
+<script type="application/json" id="funz-dati">{{ {"fn": fn, "predefinito": fn_predefinito, "tecnologie": tecnologie_lista, "modalita": v.modalita, "fascia": v.sblocco_fascia_id, "fasce": fasce_lista, "bloccanti": bloccanti}|tojson }}</script>
+
+<style>
+  body.drawer-aperto { overflow:hidden; }
+  .funz-velo { position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:80; animation: backdrop-fade 0.18s ease; }
+  .funz-popup { position:fixed; z-index:81; top:50%; left:50%; transform:translate(-50%,-50%); width:min(640px, calc(100vw - 2rem)); height:min(780px, calc(100vh - 2rem));
+    display:flex; flex-direction:column; background:var(--card-raised); border:1px solid rgba(255,255,255,.1); border-radius:12px; box-shadow:0 24px 60px rgba(0,0,0,.6); }
+  .funz-popup:focus { outline:none; }
+  .funz-popup .p-head { display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; padding:1.1rem 1.4rem .2rem; }
+  .funz-popup .p-head h2 { margin:0; font-size:1.2rem; } .funz-popup .p-head p { margin:.15rem 0 0; font-size:.88rem; }
+  .funz-popup .p-corpo { padding:.6rem 1.4rem 1.2rem; overflow-y:auto; flex:1; overscroll-behavior:contain; }
+  .funz-popup .p-foot { display:flex; align-items:center; gap:.8rem; padding:.85rem 1.4rem; border-top:1px solid var(--border); margin:0; }
+  .funz-popup .p-foot .stato { margin-right:auto; font-size:.85rem; }
+  .funz-annulla { color:var(--muted); text-decoration:none; padding:.5rem .9rem; border:1px solid var(--border); border-radius:6px; font-weight:500; }
+  .funz-annulla:hover { color:var(--text); border-color:var(--muted); }
+  .funz-popup h3 { margin:0 0 .6rem; font-size:.72rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+  .funz-popup .sez { margin-bottom:1.5rem; }
+  .funz-popup .opz { display:flex; align-items:center; gap:.5rem; cursor:pointer; font-size:.9rem; }
+  .funz-popup .scheda-l { background:rgba(255,255,255,.03); border:1px solid var(--border); border-radius:10px; padding:.8rem 1rem; margin-bottom:.8rem; }
+  .funz-popup .scheda-t { display:flex; align-items:center; gap:.6rem; margin-bottom:.3rem; }
+  .funz-popup .scheda-t .num { display:inline-flex; align-items:center; justify-content:center; width:1.7rem; height:1.7rem; border-radius:6px; background:var(--card-float); font-weight:700; font-size:.82rem; flex-shrink:0; }
+  .funz-popup .riga { display:grid; grid-template-columns:9rem 1fr; align-items:center; gap:.4rem .9rem; padding:.5rem 0; }
+  .funz-popup .riga + .riga { border-top:1px solid var(--border); }
+  .funz-popup .riga > label, .funz-popup .riga > .et { font-size:.9rem; font-weight:500; }
+  .funz-popup .riga select { width:100%; }
+  .funz-popup .riga .ctrl { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; min-width:0; }
+  .funz-popup .riga .ctrl select { flex:1; min-width:9rem; }
+  .funz-popup .freccia { color:var(--muted); font-size:.85rem; }
+  .funz-popup .nota { font-size:.82rem; margin:.1rem 0 0; grid-column:2; }
+  .funz-popup .passo { display:inline-flex; align-items:center; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--bg); }
+  .funz-popup .passo button { background:transparent; color:var(--text); border:0; border-radius:0; width:2.4rem; height:2.4rem; padding:0; font-size:1.1rem; font-weight:500; }
+  .funz-popup .passo button:hover { background:rgba(255,255,255,.08); filter:none; }
+  .funz-popup .passo output { min-width:3.6rem; text-align:center; font-variant-numeric:tabular-nums; font-weight:600; }
+  .funz-popup .interr { position:relative; width:2.5rem; height:1.45rem; border-radius:999px; background:var(--border); border:0; padding:0; flex-shrink:0; }
+  .funz-popup .interr::after { content:""; position:absolute; top:3px; left:3px; width:calc(1.45rem - 6px); height:calc(1.45rem - 6px); border-radius:50%; background:#fff; transition:transform .15s ease; }
+  .funz-popup .interr[aria-checked=true] { background:var(--accent); } .funz-popup .interr[aria-checked=true]::after { transform:translateX(1.05rem); }
+  .funz-popup .interr:disabled { opacity:.4; cursor:not-allowed; }
+  .funz-popup .interr-riga { display:flex; align-items:center; gap:.7rem; padding:.45rem 0; font-size:.9rem; }
+  .funz-popup .interr-riga .t { flex:1; } .funz-popup .interr-riga .t small { display:block; color:var(--muted); font-size:.8rem; }
+  .funz-popup .modalita { display:grid; gap:.35rem; padding:.75rem .9rem; background:rgba(255,255,255,.03); border:1px solid var(--border); border-radius:10px; font-size:.88rem; }
+  .funz-popup .modalita div { display:flex; gap:.6rem; } .funz-popup .modalita b { min-width:7.2rem; font-weight:600; }
+  .funz-popup details { border:1px solid var(--border); border-radius:10px; padding:0 .9rem; }
+  .funz-popup summary { cursor:pointer; padding:.7rem 0; color:var(--muted); font-weight:600; font-size:.9rem; }
+  .funz-popup details[open] summary { color:var(--text); }
+  .funz-popup details .contenuto { padding:.2rem 0 .8rem; }
+  .funz-popup .segm { display:inline-flex; padding:2px; background:var(--bg); border:1px solid var(--border); border-radius:8px; }
+  .funz-popup .segm button { background:transparent; color:var(--muted); border:0; border-radius:6px; padding:.35rem .8rem; font-size:.85rem; font-weight:600; }
+  .funz-popup .segm button[aria-pressed=true] { background:var(--card-float); color:var(--text); }
+  .funz-popup .sub { margin:.1rem 0 .5rem 1rem; padding:.2rem 0 .2rem .9rem; border-left:2px solid var(--border); }
+  .funz-popup .sub .riga { grid-template-columns:7rem 1fr; } .funz-popup .sub .nota { grid-column:1 / -1; }
+  .funz-popup .anteprima { margin-top:1.2rem; padding:.9rem 1rem; border:1px dashed var(--border); border-radius:10px; }
+  .funz-popup .anteprima .titolo { font-size:.72rem; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); font-weight:700; margin-bottom:.6rem; }
+  .funz-popup .allarme { display:flex; justify-content:space-between; align-items:center; gap:.8rem; padding:.55rem .8rem; background:rgba(255,255,255,.03); border:1px solid var(--border); border-radius:8px; margin-bottom:.5rem; }
+  .funz-popup .badge.ok { background:rgba(34,197,94,.15); color:var(--ok); } .funz-popup .badge.warning { background:rgba(251,191,36,.15); color:var(--warning); }
+  .funz-popup .bloccato { opacity:.4; filter:grayscale(1); transition:opacity .15s ease; }
+  .funz-popup .avviso-blocco { margin:0 0 1.2rem; padding:.65rem .85rem; border:1px solid var(--warning); border-radius:8px; background:rgba(251,191,36,.08); font-size:.88rem; }
+  @media (max-width:720px) {
+    .funz-popup { inset:0; transform:none; width:100%; height:100%; border-radius:0; }
+    .funz-popup .riga, .funz-popup .sub .riga { grid-template-columns:1fr; } .funz-popup .nota { grid-column:1; }
+    .funz-popup input, .funz-popup select { font-size:16px; }
+    .funz-popup .modalita div { flex-direction:column; gap:0; }
+    .funz-popup .p-foot { padding-bottom:calc(.85rem + env(safe-area-inset-bottom, 0px)); }
+  }
+</style>
+
+{% raw %}
+<script>
+(function () {
+  var D = JSON.parse(document.getElementById('funz-dati').textContent);
+  var clone = function (o) { return JSON.parse(JSON.stringify(o)); };
+  var cfg = clone(D.fn), PRED = D.predefinito, TEC = D.tecnologie;
+  var modalita = D.modalita, fascia = D.fascia;
+  var MODALITA = [['normale', T('Normale (serve il badge)')], ['sblocco', T('Sblocco programmato (porta libera in certi orari)')], ['manutenzione', T('Manutenzione (nessun badge apre)')], ['emergenza', T('Emergenza (porta libera per tutti)')]];
+  var modificato = false, eleggibiliPrima = null;
+  var corpo = document.getElementById('funz-corpo'), stato = document.getElementById('funz-stato');
+  var form = document.getElementById('funz-form');
+
+  var INFO_TEC = {
+    alta: T('Dato cifrato, difficile da copiare.'),
+    bassa: T('Si copia facilmente. Usalo solo se hai già questi badge.'),
+  };
+  var RUOLI_U = [['nessuno', T('Non usata')], ['apre', T('Apre (serratura o cancello)')], ['sirena', T('Sirena')], ['inseritore', T('Inseritore allarme')], ['altro', T('Altro…')]];
+  var RUOLI_I = [['nessuno', T('Non usato')], ['sensore', T('Sensore porta')], ['pulsante', T('Pulsante o telecomando')], ['altro', T('Altro…')]];
+
+  var esc = function (s) { return String(s).replace(/[&<>"']/g, function (c) { return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]; }); };
+  // Stesso markup della macro «aiuto»: il riquadro lo gestisce lo script in base.html.
+  var info = function (t, et) { return '<button type="button" class="info" aria-label="' + esc(et ? T('Informazioni su {0}', et) : T('Informazioni')) + '" aria-expanded="false">i</button><span class="info-testo" hidden>' + esc(t) + '</span>'; };
+  var lim = function (v, a, b) { return Math.max(a, Math.min(b, v)); };
+
+  var eleg1 = function (u) { return u.r === 'apre' || (u.r === 'altro' && u.tipo === 'impulso'); };
+  var idxEleg = function () { return cfg.uscite.map(function (u, i) { return eleg1(u) ? i : -1; }).filter(function (i) { return i >= 0; }); };
+  var idxApre = function () { return cfg.uscite.map(function (u, i) { return u.r === 'apre' ? i : -1; }).filter(function (i) { return i >= 0; }); };
+  var sensore = function () { return cfg.ingressi.filter(function (g) { return g.r === 'sensore'; })[0]; };
+  var uscitaDi = function (r) { return cfg.uscite.filter(function (u) { return u.r === r; })[0]; };
+  var haUscita = function (r) { return !!uscitaDi(r); };
+  var nomeUscita = function (i) { return cfg.uscite[i].nome || T('Uscita {0}', i + 1); };
+  var tecDi = function (k) { return TEC.filter(function (t) { return t[0] === k; })[0] || TEC[0]; };
+  var opzioni = function (lista, corrente, disabilita) {
+    return lista.map(function (r) {
+      return '<option value="' + r[0] + '"' + (r[0] === corrente ? ' selected' : '') + (disabilita && disabilita(r[0]) ? ' disabled' : '') + '>' + esc(r[1]) + '</option>';
+    }).join('');
+  };
+  var passo = function (j, valore) {
+    return '<span class="passo"><button type="button" data-su="' + j + ':-1" aria-label="' + T('Meno') + '">−</button><output>' + valore + ' s</output><button type="button" data-su="' + j + ':1" aria-label="' + T('Più') + '">+</button></span>';
+  };
+
+  function render() {
+    var apre = idxApre(), eleg = idxEleg(), sens = !!sensore(), sirena = uscitaDi('sirena');
+    var h = [];
+    var bloccato = D.bloccanti.indexOf(modalita) >= 0;
+
+    // ---- Modalità
+    h.push('<div class="sez"><h3>' + T('Modalità') + info(T('Come si comporta il varco. Normale: serve il badge. Sblocco programmato: porta libera nella fascia scelta. Manutenzione: il badge non apre. Emergenza: porta libera per tutti. Per l\'evacuazione resta necessario lo sgancio antincendio hardware.'), T('modalità')) + '</h3>' +
+      '<div class="riga"><label for="mod">' + T('Modalità') + '</label><div class="ctrl"><select id="mod" data-mod>' + opzioni(MODALITA, modalita) + '</select></div></div>' +
+      (modalita === 'sblocco' ? '<div class="riga"><label for="mfa">' + T('Porta libera durante') + '</label><div class="ctrl"><select id="mfa" data-mfa><option value="">' + T('Scegli una fascia…') + '</option>' +
+        D.fasce.map(function (f) { return '<option value="' + f[0] + '"' + (f[0] === fascia ? ' selected' : '') + '>' + esc(f[1]) + '</option>'; }).join('') + '</select></div>' +
+        (fascia ? '' : '<p class="nota muted">' + T('Scegli la fascia oraria in cui la porta resta libera.') + '</p>') + '</div>' : '') +
+      '</div>' +
+      (bloccato ? '<p class="avviso-blocco" role="status">' + T('In {0} il comportamento del varco è fisso: lettori, uscite, ingressi e avvisi non si modificano. Torna a Normale per cambiarli.', modalita === 'emergenza' ? T('Emergenza') : T('Manutenzione')) + '</p>' : '') +
+      '<div' + (bloccato ? ' class="bloccato" inert aria-disabled="true"' : '') + '>');
+
+    // ---- Lettori
+    h.push('<div class="sez"><h3>' + T('Lettori') + info(T('Tutti i lettori di un varco hanno gli stessi permessi. Per persone abilitate diverse servono due varchi. La direzione del lettore serve ad anti-passback e «dentro adesso».'), T('lettori')) + '</h3>');
+    cfg.lettori.forEach(function (l, i) {
+      var t = tecDi(l.tec);
+      h.push('<div class="scheda-l"><div class="scheda-t"><span class="num">L' + (i + 1) + '</span><strong style="flex:1">' + T('Lettore {0}', i + 1) + '</strong>' +
+        (cfg.lettori.length > 1 ? '<button type="button" class="ghost" data-dell="' + i + '" style="padding:.25rem .7rem;font-size:.82rem">' + T('Rimuovi') + '</button>' : '') + '</div>' +
+        '<div class="riga"><label for="lt' + i + '">' + T('Tecnologia') + (i === 0 ? info(T('La tecnologia del lettore montato. Se la cambi, i badge già registrati potrebbero non funzionare.'), T('tecnologia')) : '') + '</label>' +
+        '<div class="ctrl"><select id="lt' + i + '" data-lt="' + i + '">' + TEC.filter(function (x) { return x[0] !== '' || l.tec === ''; }).map(function (x) { return '<option value="' + x[0] + '"' + (x[0] === l.tec ? ' selected' : '') + '>' + esc(x[1]) + '</option>'; }).join('') + '</select>' +
+        (t[2] ? '<span class="badge ' + (t[2] === 'alta' ? 'ok' : 'warning') + '">' + (t[2] === 'alta' ? T('Sicura') : T('Copiabile')) + '</span>' + info(INFO_TEC[t[2]], T('sicurezza')) : '') + '</div></div>' +
+        '<div class="riga"><span class="et">' + T('Direzione') + (i === 0 ? info(T('Ingresso: chi passa va dentro. Uscita: va fuori. Con un lettore per lato, imposta uno Ingresso e uno Uscita.'), T('direzione')) : '') + '</span>' +
+        '<div class="ctrl"><span class="segm"><button type="button" data-ld="' + i + ':ingresso" aria-pressed="' + (l.dir === 'ingresso') + '">' + T('Ingresso') + '</button><button type="button" data-ld="' + i + ':uscita" aria-pressed="' + (l.dir === 'uscita') + '">' + T('Uscita') + '</button></span></div></div>' +
+        '<div class="riga"><span class="et">' + T('Con un badge valido apre') + (i === 0 ? info(T('Puoi sceglierne più d\'una: si attivano insieme, ognuna per il suo tempo.'), T('uscite aperte dal badge')) : '') + '</span>' +
+        '<div class="ctrl" style="gap:.4rem 1.1rem">' + (eleg.length ? eleg.map(function (j) {
+          return '<label class="opz"><input type="checkbox" data-la="' + i + ':' + j + '"' + (l.apre.indexOf(j) >= 0 ? ' checked' : '') + '> ' + esc(nomeUscita(j)) + '</label>'; }).join('')
+          : '<span class="muted" style="font-size:.88rem">' + T('Nessuna uscita disponibile: imposta un\'uscita su "Apre" qui sotto.') + '</span>') + '</div>' +
+        (eleg.length && !l.apre.length ? '<p class="nota muted">' + T('Nessuna uscita spuntata: il lettore registra i passaggi ma non apre.') + '</p>' : '') + '</div></div>');
+    });
+    if (cfg.lettori.length < 2) h.push('<button type="button" class="ghost" data-addl>' + T('+ Aggiungi un secondo lettore') + '</button>');
+    h.push('</div>');
+
+    // ---- Tempo di apertura
+    h.push('<div class="sez"><h3>' + T('Tempo di apertura') + info(T('Per quanto resta attivo il relè dopo un badge valido. Per un cancello bastano 1-2 secondi.'), T('tempo di apertura')) + '</h3>' +
+      (apre.length ? apre.map(function (j) { return '<div class="riga"><span class="et">' + esc(nomeUscita(j)) + '</span><div class="ctrl">' + passo(j, cfg.uscite[j].sec) + '</div></div>'; }).join('')
+        : '<p class="muted" style="margin:0;font-size:.9rem">' + T('Nessuna uscita su "Apre": i passaggi vengono registrati ma non si apre nulla.') + '</p>') + '</div>');
+
+    // ---- Collegamenti
+    h.push('<div class="sez"><h3>' + T('Collegamenti') + info(T('Cosa hai collegato a ogni morsetto. Per una serratura magnetica usa il contatto NC.'), T('collegamenti')) + '</h3>');
+    cfg.uscite.forEach(function (u, i) {
+      h.push('<div class="riga"><label for="u' + i + '">' + T('Uscita {0}', i + 1) + '</label><div class="ctrl"><select id="u' + i + '" data-u="' + i + '">' +
+        opzioni(RUOLI_U, u.r, function (r) { return (r === 'sirena' || r === 'inseritore') && u.r !== r && haUscita(r); }) + '</select></div>' +
+        (u.r === 'sirena' && !sens ? '<p class="nota muted">' + T('Senza un sensore porta su un ingresso la sirena non suona mai.') + '</p>' : '') + '</div>');
+      if (u.r === 'altro') {
+        h.push('<div class="sub"><div class="riga"><label for="un' + i + '">' + T('Nome') + '</label><div class="ctrl"><input type="text" id="un' + i + '" data-un="' + i + '" value="' + esc(u.nome) + '" placeholder="' + T('Es. Luce giardino') + '" maxlength="30" style="flex:1"></div></div>' +
+          '<div class="riga"><span class="et">' + T('Funziona come') + info(T('Impulso: si attiva per il tempo indicato (apriporta, campanello). Acceso/spento: resta com\'è finché non lo cambi (luce).'), T('funzionamento dell\'uscita')) + '</span><div class="ctrl"><span class="segm"><button type="button" data-tipo="' + i + ':impulso" aria-pressed="' + (u.tipo === 'impulso') + '">' + T('Impulso') + '</button><button type="button" data-tipo="' + i + ':interruttore" aria-pressed="' + (u.tipo === 'interruttore') + '">' + T('Acceso / spento') + '</button></span>' +
+          (u.tipo === 'impulso' ? passo(i, u.sec) : '') + '</div></div>' +
+          '<p class="nota muted">' + (cfg.ingressi.some(function (g) { return g.r === 'altro'; })
+            ? (u.tipo === 'impulso' ? T('Compare nella scheda Controllo del varco come bottone, e può essere azionata da un ingresso "Altro".') : T('Compare nella scheda Controllo del varco come interruttore, e può essere azionata da un ingresso "Altro".'))
+            : (u.tipo === 'impulso' ? T('Compare nella scheda Controllo del varco come bottone.') : T('Compare nella scheda Controllo del varco come interruttore.'))) + '</p></div>');
+      }
+    });
+    cfg.ingressi.forEach(function (g, i) {
+      h.push('<div class="riga"><label for="g' + i + '">' + T('Ingresso {0}', i + 1) + '</label><div class="ctrl"><select id="g' + i + '" data-g="' + i + '">' +
+        opzioni(RUOLI_I, g.r, function (r) { return r === 'sensore' && g.r !== 'sensore' && sens; }) + '</select>' +
+        (g.r === 'pulsante' ? '<span class="freccia">' + T('→ apre {0}', apre.length ? apre.map(function (j) { return esc(nomeUscita(j)); }).join(' ' + T('e') + ' ') : T('(nessuna uscita)')) + '</span>' : '') + '</div>' +
+        (g.r === 'pulsante' && !apre.length ? '<p class="nota muted">' + T('Imposta almeno un\'uscita su "Apre".') + '</p>' : '') + '</div>');
+      if (g.r === 'altro') {
+        h.push('<div class="sub"><div class="riga"><label for="gn' + i + '">' + T('Nome') + '</label><div class="ctrl"><input type="text" id="gn' + i + '" data-gn="' + i + '" value="' + esc(g.nome) + '" placeholder="' + T('Es. Fotocellula') + '" maxlength="30" style="flex:1"></div></div>' +
+          '<div class="riga"><label for="ga' + i + '">' + T('Quando scatta') + info(T('Registra e basta, oppure aziona un\'uscita.'), T('azione dell\'ingresso')) + '</label><div class="ctrl"><select id="ga' + i + '" data-ga="' + i + '">' +
+          '<option value="registra"' + (g.az === 'registra' ? ' selected' : '') + '>' + T('Registra e basta') + '</option>' +
+          cfg.uscite.map(function (u, j) { return u.r !== 'nessuno' ? '<option value="' + j + '"' + (String(g.az) === String(j) ? ' selected' : '') + '>' + T('Aziona {0}', esc(nomeUscita(j))) + '</option>' : ''; }).join('') + '</select></div></div></div>');
+      }
+    });
+    h.push('</div>');
+
+    // ---- Avvisi
+    h.push('<div class="sez"><h3>' + T('Avvisi') + '</h3>' +
+      '<div class="interr-riga"><span class="t">' + T('Porta lasciata aperta oltre') + '<small>' + (sens ? '' : T('Serve un sensore porta su un ingresso.')) + '</small></span>' +
+      '<input type="number" id="max" min="5" max="600" value="' + (sens ? sensore().max : 30) + '" style="width:5.2rem" ' + (sens ? '' : 'disabled') + ' aria-label="' + T('Secondi') + '"> <span class="muted">s</span>' +
+      '<button type="button" class="interr" role="switch" data-a="aperta" aria-checked="' + (sens && cfg.avvisi.aperta) + '" ' + (sens ? '' : 'disabled') + ' aria-label="' + T('Avviso porta lasciata aperta') + '"></button></div>' +
+      '<div class="interr-riga"><span class="t">' + T('Porta forzata') + '<small>' + (sens ? T('Si apre senza badge né comando.') : T('Serve un sensore porta su un ingresso.')) + '</small></span>' +
+      '<button type="button" class="interr" role="switch" data-a="forzata" aria-checked="' + (sens && cfg.avvisi.forzata) + '" ' + (sens ? '' : 'disabled') + ' aria-label="' + T('Avviso porta forzata') + '"></button></div>' +
+      (sirena && sens ? '<p class="muted" style="margin:.2rem 0 0;font-size:.85rem">' + T('La sirena suona per {0} s quando scatta un avviso attivo.', sirena.sec) + '</p>' : '') + '</div>');
+
+    // ---- Avanzate
+    var nSu = cfg.ingressi.some(function (g) { return g.r !== 'nessuno'; });
+    h.push('<details' + (aperteAvanzate ? ' open' : '') + ' id="funz-avanzate"><summary>' + T('Avanzate') + '</summary><div class="contenuto">' +
+      (sirena ? '<div class="riga"><label for="sirsec">' + T('Durata sirena') + '</label><div class="ctrl"><input type="number" id="sirsec" min="5" max="600" value="' + sirena.sec + '" style="width:5.2rem"> <span class="muted">s</span></div></div>' : '') +
+      cfg.ingressi.map(function (g, i) {
+        return g.r === 'nessuno' ? '' : '<div class="riga"><span class="et">' + T('Ingresso {0} contatto', i + 1) + (i === 0 ? info(T('NC: a riposo chiuso (tipico del sensore porta). NO: a riposo aperto (tipico di un pulsante). Il predefinito è già quello tipico.'), T('tipo di contatto')) : '') + '</span>' +
+          '<div class="ctrl"><span class="segm"><button type="button" data-nc="' + i + ':1" aria-pressed="' + g.nc + '">NC</button><button type="button" data-nc="' + i + ':0" aria-pressed="' + !g.nc + '">NO</button></span></div></div>'; }).join('') +
+      (haUscita('inseritore') ? '<div class="riga"><span class="et">' + T('Inseritore: la centrale vuole') + '</span><div class="ctrl"><span class="segm"><button type="button" data-ins="livello" aria-pressed="' + (cfg.inseritore === 'livello') + '">' + T('Livello') + '</button><button type="button" data-ins="impulso" aria-pressed="' + (cfg.inseritore === 'impulso') + '">' + T('Impulso 1 s') + '</button></span></div></div>' : '') +
+      '<div style="padding-top:.6rem"><button type="button" class="ghost" data-ripristina>' + T('Ripristina i valori predefiniti') + '</button></div></div></details>');
+
+    // ---- Come comparirà nella scheda Controllo
+    var comandi = cfg.uscite.map(function (u, i) { return {u: u, i: i}; }).filter(function (x) { return x.u.r === 'inseritore' || x.u.r === 'altro'; });
+    if (comandi.length) {
+      h.push('<div class="anteprima" aria-hidden="true"><div class="titolo">' + T('Nella scheda Controllo') + '</div>' + comandi.map(function (x) {
+        var u = x.u, ins = u.r === 'inseritore', interr = ins || u.tipo === 'interruttore';
+        var nome = ins ? T('Allarme') : (u.nome || T('Uscita {0}', x.i + 1));
+        return '<div class="allarme"><span>' + (interr ? '<span class="pallino"></span><strong>' + (ins ? T('Disinserito') : T('Spento')) + '</strong> <span class="muted">· ' + esc(nome) + '</span>'
+          : '<strong>' + esc(nome) + '</strong> <span class="muted">· ' + u.sec + ' s</span>') + '</span><span class="badge info">' + (interr ? (ins ? T('Inserisci') : T('Accendi')) : T('Attiva')) + '</span></div>';
+      }).join('') + (haUscita('inseritore') ? '<p class="muted" style="margin:.3rem 0 0;font-size:.8rem">' + T('L\'inseritore non sostituisce la centrale antintrusione.') + '</p>' : '') + '</div>');
+    }
+
+    h.push('</div>');
+    corpo.innerHTML = h.join('');
+    var manca = modalita === 'sblocco' && !fascia;
+    document.getElementById('funz-salva').disabled = manca;
+    stato.innerHTML = manca ? '<span class="badge warning">' + T('Scegli la fascia di sblocco') + '</span>'
+      : modificato ? '<span class="badge warning">' + T('Modifiche non salvate') + '</span>' + (modalita !== D.modalita ? ' <span class="muted">' + T('· la modalità va subito al varco') + '</span>' : '')
+      : T('Arriva al varco con "Scarica dati".');
+  }
+
+  var aperteAvanzate = false;
+  // Le uscite che un lettore puo' aprire cambiano: toglile da chi non le ha piu', aggiungi le nuove a tutti.
+  function sync() {
+    var ora = idxEleg();
+    cfg.lettori.forEach(function (l) {
+      l.apre = l.apre.filter(function (j) { return ora.indexOf(j) >= 0; });
+      if (eleggibiliPrima) ora.forEach(function (j) { if (eleggibiliPrima.indexOf(j) < 0 && l.apre.indexOf(j) < 0) l.apre.push(j); });
+      l.apre.sort();
+    });
+    // un ingresso "Altro" non puo' azionare un'uscita ormai non usata
+    cfg.ingressi.forEach(function (g) { if (g.az !== 'registra' && (!cfg.uscite[+g.az] || cfg.uscite[+g.az].r === 'nessuno')) g.az = 'registra'; });
+    eleggibiliPrima = ora;
+  }
+  function tocca() { sync(); modificato = true; render(); }
+
+  function ruoloUscita(i, r) {
+    var u = cfg.uscite[i];
+    u.r = r;
+    if (r === 'sirena' && u.sec < 5) u.sec = 60;
+    if (r !== 'sirena' && u.sec > 60) u.sec = 3;
+    if (r !== 'altro') { u.nome = ''; u.tipo = 'impulso'; }
+  }
+
+  corpo.addEventListener('click', function (e) {
+    var q = function (s) { return e.target.closest(s); }, b;
+    if ((b = q('[data-ld]'))) { var p = b.dataset.ld.split(':'); cfg.lettori[+p[0]].dir = p[1]; tocca(); return; }
+    if (q('[data-addl]')) { cfg.lettori.push({tec: cfg.lettori[0].tec, dir: 'uscita', apre: idxEleg()}); tocca(); return; }
+    if ((b = q('[data-dell]'))) { cfg.lettori.splice(+b.dataset.dell, 1); tocca(); return; }
+    if ((b = q('[data-a]'))) { cfg.avvisi[b.dataset.a] = !cfg.avvisi[b.dataset.a]; tocca(); return; }
+    if ((b = q('[data-nc]'))) { var n = b.dataset.nc.split(':'); cfg.ingressi[+n[0]].nc = n[1] === '1'; tocca(); return; }
+    if ((b = q('[data-ins]'))) { cfg.inseritore = b.dataset.ins; tocca(); return; }
+    if ((b = q('[data-tipo]'))) { var t = b.dataset.tipo.split(':'); cfg.uscite[+t[0]].tipo = t[1]; tocca(); return; }
+    if ((b = q('[data-su]'))) { var s = b.dataset.su.split(':'), u = cfg.uscite[+s[0]]; u.sec = lim(u.sec + +s[1], 1, 60); tocca(); return; }
+    if (q('[data-ripristina]')) { var tec = cfg.lettori[0].tec; cfg = clone(PRED); cfg.lettori[0].tec = tec; eleggibiliPrima = null; tocca(); return; }
+  });
+  corpo.addEventListener('input', function (e) {
+    var el = e.target;
+    if (el.dataset.un !== undefined) cfg.uscite[+el.dataset.un].nome = el.value;
+    else if (el.dataset.gn !== undefined) cfg.ingressi[+el.dataset.gn].nome = el.value;
+    else return;
+    if (!modificato) { modificato = true; stato.innerHTML = '<span class="badge warning">' + T('Modifiche non salvate') + '</span>'; }
+  });
+  corpo.addEventListener('change', function (e) {
+    var el = e.target, d = el.dataset;
+    if (d.mod !== undefined) { modalita = el.value; if (modalita !== 'sblocco') fascia = null; tocca(); }
+    else if (d.mfa !== undefined) { fascia = el.value ? +el.value : null; tocca(); }
+    else if (d.lt !== undefined) { cfg.lettori[+d.lt].tec = el.value; tocca(); }
+    else if (d.la !== undefined) {
+      var p = d.la.split(':').map(Number), a = cfg.lettori[p[0]].apre;
+      cfg.lettori[p[0]].apre = el.checked ? (a.indexOf(p[1]) < 0 ? a.concat([p[1]]) : a) : a.filter(function (x) { return x !== p[1]; });
+      cfg.lettori[p[0]].apre.sort(); tocca();
+    }
+    else if (d.u !== undefined) { ruoloUscita(+d.u, el.value); tocca(); }
+    else if (d.g !== undefined) { cfg.ingressi[+d.g].r = el.value; cfg.ingressi[+d.g].nc = el.value === 'sensore'; tocca(); }
+    else if (d.ga !== undefined) { cfg.ingressi[+d.ga].az = el.value === 'registra' ? 'registra' : +el.value; tocca(); }
+    else if (el.id === 'max') { sensore().max = lim(+el.value || 30, 5, 600); tocca(); }
+    else if (el.id === 'sirsec') { uscitaDi('sirena').sec = lim(+el.value || 60, 5, 600); tocca(); }
+  });
+  corpo.addEventListener('toggle', function (e) { if (e.target.id === 'funz-avanzate') aperteAvanzate = e.target.open; }, true);
+
+  form.addEventListener('submit', function () {
+    modificato = false;
+    form.elements.dati.value = JSON.stringify(cfg);
+    form.elements.modalita.value = modalita;
+    form.elements.sblocco_fascia_id.value = modalita === 'sblocco' && fascia ? fascia : '';
+  });
+  // Chiudere con modifiche non salvate (X, Esc, sfondo, Annulla) chiede conferma al browser.
+  window.addEventListener('beforeunload', function (e) { if (modificato) { e.preventDefault(); e.returnValue = ''; } });
+
+  sync(); render();
+})();
+</script>
+{% endraw %}

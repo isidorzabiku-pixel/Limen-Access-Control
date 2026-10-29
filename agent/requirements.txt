@@ -1,0 +1,8 @@
+pyserial==3.5
+PyYAML==6.0.2
+gpiozero==2.0.1
+# Nessuna dipendenza di rete oltre alla libreria standard: il canale col
+# backend è UDP puro (socket standard), niente requests né websockets.
+# RPi.GPIO si installa automaticamente da gpiozero su Raspberry Pi reale.
+# Su un PC di sviluppo (senza GPIO) gpiozero userà un pin factory mock
+# se imposti la variabile d'ambiente GPIOZERO_PIN_FACTORY=mock

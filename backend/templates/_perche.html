@@ -1,0 +1,36 @@
+{% from "_macros.html" import aiuto %}
+<div class="mon-dr-testa">
+  <div>
+    <h2 id="mon-dr-titolo">{{ t("Dettaglio passaggio") }}</h2>
+    <p class="muted mon-dr-sotto">{{ evento.timestamp|ora }}</p>
+  </div>
+  <button type="button" class="drawer-close mon-dr-chiudi" data-chiudi aria-label="{{ t('Chiudi') }}">&#10005;</button>
+</div>
+
+<div class="drawer-section">
+  <h3>{{ t("Riepilogo") }}</h3>
+  <dl class="mon-dr-dati">
+    <dt>{{ t("Varco") }}</dt><dd>{{ evento.varco.nome if evento.varco else (evento.varco_nome or '—') }}</dd>
+    <dt>{{ t("Persona") }}</dt><dd>{% if evento.persona %}<a href="/persone?apri={{ evento.persona.id }}">{{ evento.persona.nome }} {{ evento.persona.cognome }}</a>{% else %}—{% endif %}</dd>
+    <dt>{{ t("Credenziale") }}</dt><dd><code>{{ evento.media_codice or '—' }}</code></dd>
+    <dt>{{ t("Esito") }}</dt><dd><span class="badge {{ esito_classe }}">{{ esito_etichetta }}</span>{% if evento.allarme %} <span class="badge err">{{ t("Allarme") }}</span>{% endif %}</dd>
+    {% if evento.dettaglio %}<dt>{{ t("Nota registrata") }}</dt><dd>{{ evento.dettaglio }}</dd>{% endif %}
+  </dl>
+</div>
+
+<div class="drawer-section">
+  <h3>{{ t("Perché") }}{{ aiuto(t("Calcolata con la configurazione di adesso.")) }}</h3>
+  <p class="mon-dr-titolo-spieg"><strong>{{ spiegazione.titolo }}</strong></p>
+  {% for r in spiegazione.righe %}<p class="mon-dr-riga">{{ r }}</p>{% endfor %}
+  {% if spiegazione.suggerimento %}<p class="mon-dr-sugg">{{ spiegazione.suggerimento }}</p>{% endif %}
+</div>
+
+{% if spiegazione.persona_id or spiegazione.codice_da_assegnare %}
+<div class="drawer-section mon-dr-azioni">
+  {% if spiegazione.persona_id %}
+  <a class="button" href="/persone?apri={{ spiegazione.persona_id }}">{{ t("Apri la scheda") }}</a>
+  <a class="button ghost" href="/persone/{{ spiegazione.persona_id }}/permessi">{{ t("Permessi effettivi") }}</a>
+  {% endif %}
+  {% if spiegazione.codice_da_assegnare %}<a class="button" href="/persone#sconosciute">{{ t("Assegna il badge a una persona") }}</a>{% endif %}
+</div>
+{% endif %}

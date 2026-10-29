@@ -1,0 +1,1347 @@
+<!DOCTYPE html>
+<html lang="{{ lingua_corrente() }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <title>{% block title %}Limen{% endblock %} {{ t("- Limen") }}</title>
+  {# htmx e font sono serviti da /static: l'interfaccia funziona anche senza
+     internet (la LAN di un varco spesso non ne ha). htmx 2.0.3 (BSD Zero-Clause);
+     Inter e JetBrains Mono (SIL OFL) in sottoinsieme latino, vedi static/fonts. #}
+  <script src="/static/htmx.min.js"></script>
+  {% if lingua_corrente() != 'it' %}<script src="/lingua/catalogo/{{ lingua_corrente() }}.js?v={{ catalogo_versione(lingua_corrente()) }}"></script>{% endif %}
+  <script>
+    /* Frasi dei testi scritti negli script: T('frase italiana', arg0, arg1...) -> traduzione, con {0}, {1}... sostituiti dagli argomenti. */
+    window.T = function (s) {
+      var c = window.I18N, r = (c && c[s]) || s;
+      for (var i = 1; i < arguments.length; i++) r = r.split('{' + (i - 1) + '}').join(arguments[i]);
+      return r;
+    };
+  </script>
+  <style>
+    @font-face { font-family: "Inter"; src: url("/static/fonts/inter-var.woff") format("woff"); font-weight: 400 700; font-style: normal; font-display: swap; }
+    @font-face { font-family: "JetBrains Mono"; src: url("/static/fonts/jetbrains-mono-var.woff") format("woff"); font-weight: 400 600; font-style: normal; font-display: swap; }
+    :root {
+      --bg:#0b1222; --card:#121d33; --card-raised:#16233d; --card-float:#1f3156;
+      --text:#e2e8f0; --muted:#8b9bb4; --border:#223150;
+      --accent:#38bdf8; --accent-dim: rgba(56,189,248,0.15);
+      --ok:#22c55e; --err:#ef4444; --warning:#fbbf24;
+      --on-accent:#05202f;                 /* testo scuro sui pulsanti azzurri: contrasto ~9:1 (il bianco era ~2:1) */
+      --danger-bg:rgba(239,68,68,0.14); --danger-border:rgba(239,68,68,0.38); --danger-text:#fca5a5;
+      /* Scala condivisa: spaziature, raggi e corpi del testo. Le regole nuove usano questi
+         token; quelle vecchie vengono ricondotte mano a mano. */
+      --space-1:0.25rem; --space-2:0.5rem; --space-3:0.75rem; --space-4:1rem; --space-5:1.5rem; --space-6:2rem;
+      --radius-sm:6px; --radius:8px; --radius-lg:10px;
+      --fs-xs:0.75rem; --fs-sm:0.85rem; --fs-md:0.95rem; --fs-lg:1.1rem; --fs-h1:1.65rem;
+      --toast-bg:#0a1020; --toast-border:rgba(255,255,255,0.1);
+      --sidebar-w: 230px;
+      --font-ui: "Inter", system-ui, sans-serif;
+      --font-mono: "JetBrains Mono", ui-monospace, monospace;
+    }
+    * { box-sizing: border-box; }
+    body { background: var(--bg); color: var(--text); font-family: var(--font-ui); margin:0; }
+    code, .mono { font-family: var(--font-mono); }
+    /* Testata di pagina: titolo (+ contatori/azioni a destra) e riga di spiegazione, uguali ovunque. */
+    h1 { font-size: var(--fs-h1); font-weight:700; line-height:1.2; margin:0; letter-spacing:-0.01em; }
+    h2 { font-size: var(--fs-lg); }
+    .page-head { display:flex; align-items:center; gap: var(--space-3); flex-wrap:wrap; margin: 0 0 var(--space-2); }
+    .page-head .page-head-right { margin-left:auto; }
+    /* Schede (tab) dentro un drawer o una card: markup in varchi.html, comportamento in JS sotto. */
+    .schede-lista { display:flex; gap:1.5rem; border-bottom:1px solid var(--border); margin:0 0 1.25rem; }
+    button.scheda-btn { background:none; border:0; border-bottom:2px solid transparent; border-radius:0; margin-bottom:-1px; padding:0.7rem 0 0.65rem; min-height:2.75rem; color:var(--muted); font-weight:600; font-size:0.9rem; cursor:pointer; }
+    button.scheda-btn:hover { color:var(--text); filter:none; transform:none; }
+    button.scheda-btn[aria-selected="true"] { color:var(--text); border-bottom-color:var(--accent); }
+    button.scheda-btn:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
+    .scheda-pannello[hidden] { display:none; }
+    .btn-blocco { width:100%; padding:0.7rem 1rem; font-size:0.95rem; }
+    .campo-etichetta { display:block; margin:0 0 0.3rem; font-size:0.85rem; font-weight:500; color:var(--text); }
+    .campo.corto { max-width:10rem; }
+    .campo { width:100%; margin:0 0 0.9rem; } .campo:last-child { margin-bottom:0; }
+    .campo-gruppo { margin:0 0 0.9rem; } .campo-gruppo:last-child { margin-bottom:0; }
+    input[type="checkbox"] { accent-color: var(--accent); width:1rem; height:1rem; }
+    .campo-copia { display:flex; gap:0.5rem; align-items:stretch; }
+    .campo-copia .campo-tecnico { flex:1; min-width:0; }
+    .campo-copia button { flex-shrink:0; }
+    .drawer-titolo-riga { display:flex; align-items:center; gap:0.5rem 0.6rem; flex-wrap:wrap; }
+    .drawer-titolo-riga h2 { margin:0; font-size:1.2rem; line-height:1.3; }
+    .drawer-sotto { margin:0.2rem 0 0; font-size:0.88rem; }
+    .nota-azione { margin:0.5rem 0 0; font-size:0.85rem; }
+    .visually-hidden { position:absolute; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+    .riga-azione { display:flex; align-items:center; justify-content:space-between; gap:0.75rem; padding:0.55rem 0.8rem; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:8px; }
+    .riga-azione form { margin:0; }
+    .btn-link { display:inline-block; padding:0.4rem 0.9rem; border:1px solid var(--border); border-radius:6px; color:var(--text); text-decoration:none; font-weight:500; font-size:0.9rem; white-space:nowrap; }
+    .btn-link:hover { border-color:var(--accent); color:var(--accent); }
+    .btn-link:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+    .funz-riepilogo { font-size:0.9rem; min-width:0; }
+    .uscita-comando + .uscita-comando { margin-top:0.5rem; }
+    .riga-opzione { display:flex; align-items:center; margin:0 0 0.3rem; }
+    .riga-opzione label { display:flex; align-items:center; gap:0.5rem; cursor:pointer; }
+    .sotto-opzioni { margin-top:0.7rem; padding-left:0.9rem; border-left:2px solid var(--border); transition:opacity 0.15s ease; }
+    .sotto-opzioni[inert] { opacity:0.45; }
+    .pallino { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--muted); margin-right:0.35rem; flex-shrink:0; }
+    .pallino.ok { background:var(--ok); } .pallino.err { background:var(--err); } .pallino.warning { background:var(--warning); }
+    .passaggio { display:flex; align-items:center; gap:0.7rem; padding:0.5rem 0; border-bottom:1px solid var(--border); font-size:0.9rem; }
+    .passaggio:last-of-type { border-bottom:0; }
+    .passaggio-testo { flex:1; min-width:0; } .passaggio-testo > div:first-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .passaggio-testo .muted { font-size:0.8rem; }
+    .passaggio-ko { color:var(--err); }
+    .passaggio-ora { font-size:0.78rem; white-space:nowrap; font-variant-numeric:tabular-nums; }
+    dl.dati { display:grid; grid-template-columns:auto 1fr; gap:0.45rem 1rem; margin:0; font-size:0.9rem; }
+    dl.dati dt { color:var(--muted); } dl.dati dd { margin:0; }
+    .drawer-schede { display:flex; flex-direction:column; min-height:100%; } .drawer-schede .scheda-pannello:not([hidden]) { flex:1; display:flex; flex-direction:column; } .drawer-schede .scheda-pannello > form { flex:1; display:flex; flex-direction:column; }
+    .barra-salva { position:sticky; bottom:-1.5rem; margin:auto -1.5rem -1.5rem; padding:0.85rem 1.5rem; background:var(--card-raised); border-top:1px solid var(--border); }
+    .barra-salva button { width:100%; }
+    details.anteprima { margin-top:0.8rem; } details.anteprima summary { cursor:pointer; color:var(--muted); font-size:0.85rem; margin-bottom:0.5rem; }
+    .zona-pericolo { padding-top:1.25rem; border-top:1px solid var(--border); }
+    button.success { background:var(--ok); color:#042f0f; }
+    /* Icona "i" con spiegazione (macro info in _macros.html). Il testo compare in un unico
+       riquadro flottante (#info-pop) posizionato da JS, cosi' non viene tagliato da drawer e tabelle. */
+    button.info { display:inline-flex; align-items:center; justify-content:center; position:relative; width:1.15rem; height:1.15rem; min-width:0; padding:0; margin:0 0 0 0.4rem; vertical-align:middle;
+      border-radius:50%; border:1px solid var(--muted); background:transparent; color:var(--muted); font: italic 700 0.7rem/1 Georgia, 'Times New Roman', serif; cursor:help; text-transform:none; letter-spacing:0; flex-shrink:0; }
+    button.info::after { content:""; position:absolute; inset:-0.4rem; }
+    button.info:hover, button.info:focus-visible, button.info[aria-expanded="true"] { color:var(--accent); border-color:var(--accent); filter:none; transform:none; }
+    h1 button.info, h2 button.info { margin-left:0.5rem; }
+    #info-pop { position:fixed; z-index:300; max-width:min(21rem, calc(100vw - 1.5rem)); padding:0.65rem 0.85rem; background:var(--card-raised); color:var(--text); border:1px solid var(--border); border-radius:8px;
+      font-size:0.85rem; line-height:1.5; font-weight:400; text-transform:none; letter-spacing:0; box-shadow:0 10px 30px rgba(0,0,0,0.45); }
+    #info-pop[hidden] { display:none; }
+    #info-pop strong { color:var(--text); }
+    #info-pop p { margin:0 0 0.5rem; } #info-pop p:last-child { margin:0; }
+    .page-lead { margin: 0 0 var(--space-4); max-width: 70ch; }
+    a { color: var(--accent); text-underline-offset: 2px; }
+    a:hover { color: #7dd3fc; }
+
+    .live-dot { display:inline-block; width:8px; height:8px; border-radius:50%; background: var(--ok); flex-shrink:0; animation: live-pulse 1.8s ease-in-out infinite; }
+    .live-dot.off { background: var(--err); animation: none; }
+    @keyframes live-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.55); }
+      50% { box-shadow: 0 0 0 5px rgba(34,197,94,0); }
+    }
+
+    .layout { display:flex; min-height:100vh; }
+
+    .sidebar {
+      width: var(--sidebar-w);
+      flex-shrink: 0;
+      background: var(--card);
+      display:flex;
+      flex-direction:column;
+      padding: 1.25rem 0;
+      /* Fissa all'altezza della finestra: con una pagina lunga non si allunga e «utente / Esci» restano in vista. */
+      position: sticky; top: 0; height: 100vh; align-self: flex-start;
+    }
+    .sidebar .brand { font-weight:700; font-size:1.05rem; padding: 0 1.25rem 1.25rem; border-bottom: 1px solid var(--border); margin-bottom: 0.75rem; display:flex; align-items:center; gap:0.5rem; }
+    .sidebar .brand svg { flex-shrink:0; color: var(--text); }
+    .sidebar nav { display:flex; flex-direction:column; flex:1; padding: 0 0.6rem; overflow-y:auto; }
+
+    .nav-section { display:flex; flex-direction:column; }
+    .nav-section + .nav-section { margin-top: 1.1rem; }
+    .nav-section-title {
+      font-size: 0.68rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 0 0.65rem 0.4rem;
+    }
+
+    .nav-item {
+      position: relative;
+      display:flex;
+      align-items:center;
+      gap: 0.65rem;
+      color: var(--muted);
+      text-decoration:none;
+      font-size:0.9rem;
+      padding: 0.55rem 0.65rem;
+      border-radius: 8px;
+      margin-bottom: 1px;
+      transition: color 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
+    }
+    .nav-item::before {
+      content: "";
+      position: absolute;
+      left: -0.6rem;
+      top: 50%;
+      height: 0;
+      width: 3px;
+      border-radius: 0 3px 3px 0;
+      background: var(--accent);
+      transform: translateY(-50%);
+      transition: height 0.18s ease;
+    }
+    .nav-item .nav-icon { display:flex; flex-shrink:0; opacity: 0.75; transition: opacity 0.15s ease, transform 0.15s ease; }
+    .nav-item .nav-label { flex:1; white-space:nowrap; }
+    .nav-item:hover { color: var(--text); background: rgba(255,255,255,0.05); transform: translateX(2px); }
+    .nav-item:hover .nav-icon { opacity: 1; transform: scale(1.08); }
+    .nav-item.active { color: var(--text); background: var(--accent-dim); }
+    .nav-item.active .nav-icon { opacity: 1; color: var(--accent); }
+    .nav-item.active::before { height: 60%; }
+
+    .nav-badge {
+      background: var(--err);
+      color: #fff;
+      font-size: 0.68rem;
+      font-weight: 700;
+      line-height: 1;
+      padding: 0.15rem 0.4rem;
+      border-radius: 999px;
+    }
+    /* Il contatore sta fermo: un impulso continuo distrae e non dice nulla.
+       Un solo "ping" quando il numero cambia (lo script lo aggiunge). */
+    .nav-badge.ping { animation: badge-ping 0.9s ease-out 1; }
+    @keyframes badge-ping {
+      0% { box-shadow: 0 0 0 0 rgba(239,68,68,0.6); }
+      100% { box-shadow: 0 0 0 8px rgba(239,68,68,0); }
+    }
+
+    .sidebar .user-box { padding: 0.6rem 1.25rem 0; border-top: 1px solid var(--border); margin-top: 0.5rem; display:flex; align-items:center; justify-content:space-between; gap: var(--space-2); }
+    .sidebar .user-box .muted { display:block; margin:0; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .sidebar .user-box form { margin:0; }
+    .sidebar .user-box button { width:auto; padding:0.25rem 0.7rem; font-size: var(--fs-sm); min-height:0; transition: filter 0.15s ease, transform 0.1s ease; }
+    .sidebar .user-box button:hover { filter: brightness(1.1); }
+    .sidebar .user-box button:active { transform: scale(0.98); }
+    /* Scelta della lingua: due sigle affiancate (IT | EN), quella in uso evidenziata. */
+    .lingua-sw { display:inline-flex; flex-shrink:0; border:1px solid var(--border); border-radius:6px; overflow:hidden; font-size:0.7rem; font-weight:600; letter-spacing:0.04em; }
+    .lingua-sw a { padding:0.2rem 0.45rem; color: var(--muted); text-decoration:none; }
+    .lingua-sw a:hover { color: var(--text); }
+    .lingua-sw a[aria-current] { background: var(--accent-dim); color: var(--accent); }
+    .lingua-sw a:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+
+    .content { flex:1; min-width:0; }
+    /* «Da fare»: una voce piccola nella barra laterale (con contatore) che apre l'elenco; le novita' arrivano anche come
+       breve notifica in alto a destra (script in fondo). Nessuna voce = nessuna riga. */
+    #da-fare-voce { display:flex; align-items:center; gap:0.6rem; width:calc(100% - 1.2rem); margin:0 0.6rem 0.4rem; padding:0.5rem 0.75rem; border-radius: var(--radius); background: var(--card-raised); border:1px solid var(--border); color: var(--text); font-size: var(--fs-md); font-weight:500; cursor:pointer; text-align:left; }
+    #da-fare-voce[hidden] { display:none; }
+    #da-fare-voce:hover { filter:none; border-color: var(--accent); transform:none; }
+    #da-fare-voce .dafare-punto { margin:0; background: var(--accent); }
+    #da-fare-voce.warn .dafare-punto { background: var(--warning); }
+    #da-fare-voce.err .dafare-punto { background: var(--err); }
+    #da-fare-voce.pulsa .dafare-punto { animation: dafare-pulsa 1.6s infinite; }
+    #da-fare-voce .dafare-n { margin-left:auto; min-width:1.3rem; text-align:center; padding:0.1rem 0.4rem; border-radius:999px; background: var(--accent-dim); color: var(--accent); font-size: var(--fs-xs); font-weight:700; }
+    #da-fare.dafare-pop { position:fixed; left: calc(var(--sidebar-w) + 8px); bottom: 4.2rem; width: min(20rem, calc(100vw - 2rem)); max-height: 60vh; overflow-y:auto; z-index:90;
+      display:flex; flex-direction:column; gap: var(--space-2); padding: var(--space-2); background: var(--toast-bg); border:1px solid var(--toast-border); border-radius: var(--radius-lg); box-shadow: 0 18px 40px rgba(0,0,0,0.5); }
+    #da-fare.dafare-pop[hidden] { display:none; }
+    .dafare-card { background: var(--card-raised); border:1px solid var(--border); border-radius: var(--radius); padding: 0.6rem 0.7rem; display:flex; flex-direction:column; gap: var(--space-2); }
+    .dafare-riga { display:flex; gap: var(--space-2); align-items:flex-start; }
+    .dafare-testo { min-width:0; flex:1; }
+    .dafare-testo b { display:block; font-size: var(--fs-sm); font-weight:600; }
+    .dafare-testo small { display:block; color: var(--muted); font-size: var(--fs-xs); overflow-wrap:anywhere; margin-top:1px; }
+    .dafare-punto { width:8px; height:8px; border-radius:50%; flex:none; margin-top:0.35rem; background: var(--accent); }
+    .dafare-card.warn .dafare-punto { background: var(--warning); }
+    .dafare-card.err .dafare-punto { background: var(--err); }
+    .dafare-punto.pulsa { animation: dafare-pulsa 1.6s infinite; }
+    @keyframes dafare-pulsa { 0% { box-shadow:0 0 0 0 rgba(56,189,248,0.5); } 70%, 100% { box-shadow:0 0 0 6px rgba(56,189,248,0); } }
+    .dafare-card form { margin:0; }
+    .dafare-card button[type=submit] { width:100%; padding:0.4rem 0.7rem; font-size: var(--fs-sm); }
+    .flash-banner .dafare-azione { margin-top:0.5rem; }
+    .flash-banner .dafare-azione button { padding:0.3rem 0.8rem; font-size: var(--fs-sm); }
+    @media (prefers-reduced-motion: reduce) { .dafare-punto.pulsa, #da-fare-voce.pulsa .dafare-punto { animation:none; } }
+    @media (max-width: 720px) {
+      #da-fare-voce { position:fixed; right:12px; left:auto; width:auto; margin:0; bottom: calc(4.6rem + env(safe-area-inset-bottom, 0px)); z-index:55; box-shadow: 0 8px 24px rgba(0,0,0,0.45); }
+      #da-fare.dafare-pop { left:12px; right:12px; width:auto; bottom: calc(8.2rem + env(safe-area-inset-bottom, 0px)); }
+    }
+    main { padding: var(--space-5) var(--space-6); max-width: 1180px; }
+
+    .card { background: var(--card); border-radius: var(--radius-lg); padding: 1.25rem; margin-bottom: var(--space-4); border: 1px solid rgba(255,255,255,0.03); transition: border-color 0.2s ease; }
+
+    /* Pannello "+ Nuovo X" a scomparsa: <details> nativo, niente JS. Chiuso
+       di default così la lista (varchi/persone/gruppi/...) è la prima cosa
+       che si vede, non un form di creazione sempre aperto sopra tutto. */
+    .card-toggle { padding: 0; }
+    .card-toggle > summary {
+      cursor: pointer; list-style: none; padding: 0.9rem 1.25rem;
+      display:flex; align-items:center; gap:0.65rem; font-weight:600;
+      color: var(--text); user-select:none;
+    }
+    .card-toggle > summary::-webkit-details-marker { display:none; }
+    .card-toggle > summary .toggle-plus {
+      display:inline-flex; align-items:center; justify-content:center;
+      width:1.5rem; height:1.5rem; border-radius:50%; flex-shrink:0;
+      background: var(--accent-dim); color: var(--accent); font-size:1.05rem; line-height:1;
+      transition: transform 0.15s ease;
+    }
+    .card-toggle[open] > summary .toggle-plus { transform: rotate(45deg); }
+    .card-toggle[open] > summary { border-bottom:1px solid var(--border); }
+    .card-toggle-body { padding: 1rem 1.25rem 1.25rem; animation: fade-in-up 0.15s ease; }
+
+    /* Banner di esito: un solo stile per tutta l'app, scuro, in alto a destra
+       (lo script in fondo li sposta nel contenitore .toast-stack). Senza JS
+       restano come riquadri normali nella pagina. */
+    .flash-banner {
+      position: relative; display:flex; align-items:flex-start; gap:0.6rem;
+      background: var(--toast-bg); color: var(--text); border:1px solid var(--toast-border);
+      border-left: 4px solid var(--muted); border-radius:8px; padding:0.65rem 0.8rem 0.65rem 0.9rem;
+      margin-bottom:0.75rem; font-size:0.88rem; line-height:1.4;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+      transition: opacity 0.35s ease, transform 0.35s ease;
+    }
+    .flash-banner.ok { border-left-color: var(--ok); }
+    .flash-banner.err { border-left-color: var(--err); }
+    .flash-banner.warn { border-left-color: var(--warning); }
+    .flash-banner.info { border-left-color: var(--accent); }
+    .flash-banner .flash-testo { flex:1; min-width:0; }
+    .flash-banner .flash-chiudi { background:transparent; border:none; color: var(--muted); padding:0 0.25rem; font-size:1.1rem; line-height:1; font-weight:400; }
+    .flash-banner .flash-chiudi:hover { color: var(--text); filter:none; }
+    .flash-banner.flash-hide { opacity:0; transform: translateX(12px); }
+    .toast-stack {
+      position: fixed; top: 1rem; right: 1rem; z-index: 200;
+      display:flex; flex-direction:column; gap:0.5rem; width: min(24rem, calc(100vw - 2rem));
+      pointer-events: none;
+    }
+    .toast-stack .flash-banner { margin-bottom:0; pointer-events:auto; animation: toast-in 0.25s ease; }
+    /* Con un drawer aperto le notifiche si spostano accanto al drawer: restando in alto a destra coprivano la sua «X» (il click chiudeva la notifica, non il drawer). */
+    @media (min-width: 721px) { body.drawer-aperto .toast-stack { right: calc(min(560px, 94vw) + 1.25rem); } }
+    @media (max-width: 720px) { body.drawer-aperto .toast-stack { top: auto; bottom: calc(0.8rem + env(safe-area-inset-bottom, 0px)); } }
+    @keyframes toast-in { from { opacity:0; transform: translateX(16px); } to { opacity:1; transform:none; } }
+
+
+    /* Interruttore (checkbox a scorrimento): <label class="sw"><input type="checkbox"> Testo</label> */
+    .sw { display:inline-flex; align-items:center; gap:0.65rem; cursor:pointer; }
+    .sw input { -webkit-appearance:none; appearance:none; width:38px; height:22px; min-width:38px; border-radius:11px; margin:0; padding:0;
+      background: rgba(139,155,180,0.35); border:0; position:relative; cursor:inherit; flex-shrink:0; transition: background-color .15s ease; }
+    .sw input::after { content:""; position:absolute; top:3px; left:3px; width:16px; height:16px; border-radius:50%; background:#fff; transition: transform .15s ease; }
+    .sw input:checked { background: var(--accent); }
+    .sw input:checked::after { transform: translateX(16px); }
+    .sw input:disabled { opacity:0.45; cursor:not-allowed; }
+    .sw input:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+    /* Drawer laterale (dettaglio persona / varco): unico per tutta l'app. */
+    .drawer-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 40;
+      display:block; animation: backdrop-fade 0.18s ease;
+    }
+    @keyframes backdrop-fade { from { opacity:0; } to { opacity:1; } }
+    .drawer {
+      position: fixed; top:0; right:0; bottom:0; width: min(440px, 92vw);
+      background: var(--card-raised); z-index: 41; padding: 1.5rem; overflow-y:auto;
+      box-shadow: -10px 0 30px rgba(0,0,0,0.4); overscroll-behavior: contain;
+      animation: drawer-slide-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes drawer-slide-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
+    .drawer.drawer-largo { width: min(560px, 94vw); }
+    .drawer:focus { outline: none; }
+    .drawer-header { display:flex; justify-content:space-between; align-items:flex-start; gap:0.75rem; padding-bottom:0.25rem; margin-bottom:0.75rem; }
+    .drawer-close {
+      display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;
+      width:2rem; height:2rem; color: var(--muted); text-decoration:none; font-size:1rem; line-height:1;
+      border-radius:6px; transition: background-color 0.15s ease, color 0.15s ease;
+    }
+    .drawer-close:hover { color: var(--text); background: rgba(255,255,255,0.08); }
+    @media (max-width: 720px) {
+      .drawer-backdrop { z-index: 65; }
+      .drawer { z-index: 66; width: 100vw; padding: 1rem; padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px)); }
+      .drawer.drawer-largo { width: 100vw; }
+      .drawer-close { width: 2.5rem; height: 2.5rem; font-size: 1.1rem; }
+      .barra-salva { bottom: calc(-1rem - env(safe-area-inset-bottom, 0px)); margin: auto -1rem calc(-1rem - env(safe-area-inset-bottom, 0px)); padding: 0.85rem 1rem calc(0.85rem + env(safe-area-inset-bottom, 0px)); }
+      .schede-lista { gap: 0; } button.scheda-btn { flex: 1; text-align: center; }
+      .drawer input, .drawer select, .drawer textarea { font-size: 16px; }
+      button.info::after { inset: -0.6rem; }
+    }
+    @media (pointer: coarse) { button.info::after { inset: -0.6rem; } }
+    .drawer-section { margin-bottom:1.5rem; }
+    .drawer-section:last-child { margin-bottom:0; }
+    .drawer-section h3 { font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color: var(--muted); margin: 0 0 0.6rem; }
+    body.drawer-aperto { overflow: hidden; }
+    /* Pulsante di riga › e drawer «dettaglio» (Monitoraggio, Log): <dialog> modale a destra. */
+    /* Colonna a destra con il pulsante che apre il drawer «dettaglio e motivo» */
+    th.mon-azione, td.mon-azione { width:2.75rem; padding-left:0; padding-right:0.6rem; text-align:right; }
+    .mon-apri { display:inline-flex; align-items:center; justify-content:center; gap:0.3rem; width:2rem; height:2rem; padding:0; margin:0;
+                background:transparent; border:1px solid var(--border); border-radius:8px; color: var(--muted); cursor:pointer; font:inherit;
+                transition: background-color .15s ease, color .15s ease, border-color .15s ease; }
+    .mon-apri:hover, .mon-apri:focus-visible { background: rgba(255,255,255,0.08); color: var(--accent); border-color: var(--accent); }
+    .mon-apri-freccia { font-size:1.35rem; line-height:1; margin-top:-0.1rem; }
+    .mon-apri-testo { display:none; }
+    @media (max-width: 720px) {
+      td.mon-azione { display:flex; justify-content:flex-end; padding:0.35rem 0 0; width:100%; }
+      td.mon-azione:empty { display:none; }
+      .mon-apri { width:auto; padding:0 0.8rem; height:2.4rem; }
+      .mon-apri-testo { display:inline; font-size:0.85rem; }
+      .mon-apri-freccia { margin-left:0.1rem; }
+    }
+    /* Drawer laterale (dialog modale: Esc, focus e sfondo li gestisce il browser) */
+    dialog.mon-drawer { position:fixed; inset:0 0 0 auto; margin:0; width:min(460px, 92vw); max-width:none; height:100%; max-height:none;
+                        padding:1.5rem; border:none; border-left:1px solid var(--border); background: var(--card-raised); color: var(--text);
+                        box-shadow:-10px 0 30px rgba(0,0,0,0.4); overflow-y:auto; overscroll-behavior:contain; }
+    dialog.mon-drawer[open] { animation: drawer-slide-in 0.22s cubic-bezier(0.16, 1, 0.3, 1); }
+    dialog.mon-drawer::backdrop { background: rgba(0,0,0,0.55); animation: backdrop-fade 0.18s ease; }
+    @media (max-width: 720px) { dialog.mon-drawer { width:100vw; padding:1rem; padding-bottom:calc(1rem + env(safe-area-inset-bottom, 0px)); border-left:none; } }
+    .mon-dr-testa { display:flex; justify-content:space-between; align-items:flex-start; gap:0.75rem; margin-bottom:1.25rem; }
+    button.mon-dr-chiudi { background:transparent; border:none; padding:0; margin:0; color: var(--muted); cursor:pointer; box-shadow:none; }
+    button.mon-dr-chiudi:hover { color: var(--text); background: rgba(255,255,255,0.08); }
+    .mon-dr-testa h2 { margin:0; font-size:1.2rem; }
+    .mon-dr-sotto { margin:0.2rem 0 0; font-size:0.88rem; }
+    .mon-dr-dati { display:grid; grid-template-columns: minmax(6.5rem, 30%) minmax(0,1fr); gap:0.5rem 0.9rem; margin:0; font-size:0.92rem; }
+    .mon-dr-dati dt { color: var(--muted); }
+    .mon-dr-dati dd { margin:0; overflow-wrap:anywhere; }
+    .mon-dr-titolo-spieg { margin:0 0 0.4rem; }
+    .mon-dr-riga { margin:0.45rem 0 0; line-height:1.5; font-size:0.92rem; }
+    .mon-dr-sugg { margin:0.8rem 0 0; padding:0.65rem 0.8rem; border-left:3px solid var(--accent); background: rgba(255,255,255,0.04); border-radius:0 6px 6px 0; line-height:1.5; font-size:0.92rem; }
+    .mon-dr-azioni { display:flex; flex-wrap:wrap; gap:0.5rem; }
+    .mon-dr-caricamento { color: var(--muted); }
+    /* Valori tecnici (api_key, config) su fondo piu' scuro del drawer, cosi' si leggono come campo. */
+    .campo-tecnico { display:block; padding:0.55rem 0.65rem; background: var(--bg); border:1px solid var(--border); border-radius:6px; word-break:break-all; font-size:0.82rem; }
+
+
+  .mon-filtri { display:flex; flex-wrap:wrap; gap: var(--space-3) var(--space-4); align-items:flex-end; }
+  .mon-campo { display:flex; flex-direction:column; gap: var(--space-1); font-size:0.78rem; color: var(--muted); }
+  .mon-cerca { flex:1; min-width:12rem; }
+  .mon-cerca input { width:100%; }
+  .mon-chip-gruppo { display:flex; gap: var(--space-1); flex-wrap:wrap; }
+  .mon-chip input { position:absolute; opacity:0; pointer-events:none; }
+  .mon-chip span { display:inline-block; padding:0.4rem 0.85rem; border:1px solid var(--border); border-radius:999px; font-size: var(--fs-sm); color: var(--muted); cursor:pointer; user-select:none; transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease; }
+  .mon-chip:hover span { color: var(--text); border-color: var(--muted); }
+  .mon-chip input:checked + span { background: var(--accent-dim); color: var(--accent); border-color: rgba(56,189,248,0.45); }
+  .mon-chip input:focus-visible + span { outline:2px solid var(--accent); outline-offset:2px; }
+    /* Dialog di conferma unico (sostituisce confirm()): titolo, spiegazione e impatto in numeri. */
+    #dialog-conferma { border:1px solid var(--toast-border); border-radius: var(--radius-lg); background: var(--card-raised); color: var(--text); padding:0; width:min(30rem, calc(100vw - 2rem)); box-shadow: 0 24px 60px rgba(0,0,0,0.6); }
+    #dialog-conferma::backdrop { background: rgba(0,0,0,0.6); }
+    #dialog-conferma form { padding: var(--space-5); }
+    #dialog-conferma h2 { margin:0 0 var(--space-2); font-size: var(--fs-lg); }
+    #dialog-conferma p { margin:0; color: var(--muted); line-height:1.5; }
+    #dialog-conferma ul { margin: var(--space-3) 0 0; padding: var(--space-3) var(--space-4) var(--space-3) 1.9rem; background: rgba(255,255,255,0.04); border-radius: var(--radius); font-size: var(--fs-sm); }
+    #dialog-conferma ul:empty { display:none; }
+    #dialog-conferma li { margin: 0.15rem 0; }
+    .dc-azioni { display:flex; justify-content:flex-end; gap: var(--space-2); margin-top: var(--space-5); flex-wrap:wrap; }
+
+    .vuoto { padding: var(--space-6) var(--space-5); text-align:center; display:flex; flex-direction:column; align-items:center; }
+    .vuoto-titolo { font-weight:600; font-size: var(--fs-md); }
+    .vuoto p { max-width: 42ch; }
+    .card > .vuoto, td > .vuoto { padding-block: var(--space-5); }
+
+    /* Filtro tabella: stesso aspetto della ricerca già usata in Persone. */
+    .table-filter-row { display:flex; gap:0.5rem; align-items:center; margin-bottom:0.75rem; }
+    .table-filter-row input[type="search"] { flex:1; max-width:360px; }
+    table { width:100%; border-collapse: collapse; font-size:0.9rem; }
+    th, td { text-align:left; padding: 0.5rem; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight:600; }
+    tbody tr { transition: background-color 0.12s ease; }
+    tbody tr:hover { background: rgba(255,255,255,0.025); }
+    button, input, select, textarea { font-family: inherit; }
+    /* niente frecce su/giu' nei campi numerici: si scrive il numero */
+    input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+    input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    input, select { background: var(--bg); border:1px solid var(--border); color:var(--text); padding:0.5rem; border-radius:6px; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+    input:focus, select:focus { outline:none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+
+    /* Indicatore di focus da tastiera: solo :focus-visible (non su click col
+       mouse), accent cyan ad alto contrasto sullo sfondo scuro — soddisfa il
+       3:1 richiesto da WCAG 2.4.11 senza introdurre un secondo linguaggio
+       visivo oltre a quello già usato per input/select. */
+    a:focus-visible, button:focus-visible, summary:focus-visible,
+    .nav-item:focus-visible, .tag-chip-remove:focus-visible, input[type="checkbox"]:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+      border-radius: 4px;
+    }
+    button { background: var(--accent); color: var(--on-accent); font-weight:600; border:1px solid transparent; padding:0.5rem 1rem; border-radius:6px; cursor:pointer; transition: filter 0.15s ease, transform 0.08s ease, background-color 0.15s ease; }
+    button:hover { filter: brightness(1.1); }
+    button:active { transform: scale(0.97); }
+    button.danger { background: var(--danger-bg); color: var(--danger-text); border-color: var(--danger-border); }
+    button.danger:hover { background: rgba(239,68,68,0.26); filter:none; }
+    button.ghost { background: transparent; border: 1px solid var(--border); color: var(--muted); font-weight:500; }
+    button.ghost:hover { color: var(--text); border-color: var(--muted); filter:none; }
+    a.button { display:inline-block; background: var(--accent); color: var(--on-accent); font-weight:600; border:1px solid transparent; padding:0.5rem 1rem; border-radius:6px; font-size:0.9rem; text-decoration:none; transition: filter 0.15s ease; }
+    a.button:hover { filter: brightness(1.1); color: var(--on-accent); }
+    a.button.ghost { background: transparent; border: 1px solid var(--border); color: var(--muted); font-weight:500; }
+    a.button.ghost:hover { color: var(--text); border-color: var(--muted); filter:none; }
+
+    /* Stato disabilitato: chiaramente inattivo, senza hover/press. Un bottone che
+       sta inviando (testo "...", vedi script sotto) mostra il cursore di attesa. */
+    button:disabled, a.button[aria-disabled="true"] {
+      opacity: 0.45; cursor: not-allowed; filter: grayscale(0.4); transform: none;
+    }
+    button:disabled:hover, button:disabled:active { filter: grayscale(0.4); transform: none; }
+    button[data-original-text]:disabled { cursor: progress; opacity: 0.7; filter:none; }
+    input:disabled, select:disabled, textarea:disabled { opacity: 0.5; cursor: not-allowed; background: rgba(255,255,255,0.03); }
+    form.inline { display:inline; }
+    summary.ghost {
+      background: transparent; border: 1px solid var(--border); color: var(--muted);
+      padding:0.5rem 1rem; border-radius:6px; cursor:pointer; display:inline-block;
+      font-size:0.9rem; list-style:none; transition: filter 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    }
+    summary.ghost::-webkit-details-marker { display:none; }
+    summary.ghost:hover { color: var(--text); border-color: var(--muted); }
+    .row-actions { display:flex; gap:0.4rem; flex-wrap:wrap; justify-content:flex-end; align-items:flex-start; }
+    .row-actions details { flex: 0 0 auto; }
+    .row-actions details[open] { flex: 1 1 100%; order: 99; }
+    .row-actions details[open] form.inline-form {
+      display:flex; gap:0.4rem; margin-top:0.5rem; justify-content:flex-end; flex-wrap:wrap;
+    }
+    .badge { padding:0.15rem 0.5rem; border-radius:999px; font-size:0.75rem; white-space:nowrap; }
+    .badge.ok { background: rgba(34,197,94,0.15); color: var(--ok); }
+    .badge.err { background: rgba(239,68,68,0.15); color: var(--err); }
+    .badge.warning { background: rgba(251,191,36,0.15); color: var(--warning); }
+    .badge.info { background: var(--accent-dim); color: var(--accent); }
+    .muted { color: var(--muted); font-size: 0.85rem; }
+
+    main { animation: fade-in-up 0.25s ease; }
+    @keyframes fade-in-up { from { opacity:0; transform: translateY(4px); } to { opacity:1; transform:none; } }
+
+    .checkbox-list { display:flex; flex-direction:column; gap:0.35rem; max-height:240px; overflow-y:auto; padding:0.6rem; background:rgba(255,255,255,0.025); border-radius:8px; border:1px solid var(--border); }
+    .checkbox-row { display:flex; align-items:center; gap:0.55rem; font-size:0.85rem; cursor:pointer; padding:0.2rem 0.1rem; border-radius:4px; transition: background-color 0.12s ease; }
+    .checkbox-row:hover { background: rgba(255,255,255,0.04); }
+    .checkbox-row input { cursor:pointer; accent-color: var(--accent); }
+
+    /* Tag picker: chip rimovibili + pulsante "+ Aggiungi" con menu di ricerca,
+       usato al posto delle checkbox-list quando le opzioni possono essere decine
+       (gruppi/regole su una persona, regole su un gruppo, ecc.). */
+    .tag-picker { display:flex; flex-direction:column; gap:0.6rem; }
+    .tag-picker-chips { display:flex; flex-wrap:wrap; align-items:center; gap:0.4rem; min-height:1.8rem; }
+    .tag-picker-empty { color: var(--muted); font-size:0.82rem; }
+    .tag-chip {
+      display:inline-flex; align-items:center; gap:0.35rem;
+      background: var(--accent-dim); color: var(--text); border:1px solid rgba(56,189,248,0.3);
+      border-radius:999px; padding:0.28rem 0.4rem 0.28rem 0.7rem; font-size:0.82rem;
+      animation: fade-in-up 0.15s ease;
+    }
+    .tag-chip-remove {
+      background:transparent; border:none; color: var(--muted); cursor:pointer;
+      font-size:0.95rem; line-height:1; padding:0.05rem 0.35rem; border-radius:50%;
+      transition: background-color 0.12s ease, color 0.12s ease;
+    }
+    .tag-chip-remove:hover { background: rgba(255,255,255,0.1); color: var(--text); }
+    .tag-picker-add-wrap { position:relative; display:inline-block; }
+    .tag-picker-add {
+      background: transparent; border:1px dashed var(--border); color: var(--muted);
+      font-size:0.82rem; padding:0.4rem 0.8rem; border-radius:999px;
+      transition: color 0.15s ease, border-color 0.15s ease;
+    }
+    .tag-picker-add:hover { color: var(--text); border-color: var(--accent); filter:none; }
+    .tag-picker-dropdown {
+      display:none; position:absolute; top: calc(100% + 0.4rem); left:0; z-index:25;
+      width:280px; max-width:85vw; background: var(--card-float);
+      /* --card-float è deliberatamente più chiaro sia di --card che di
+         --card-raised: questo dropdown compare sia su una .card normale
+         (pagina Gruppi) sia dentro un .drawer, che usa già --card-raised —
+         se il dropdown avesse lo stesso sfondo del drawer che lo contiene
+         (come succedeva prima), si confondeva con lo sfondo, lasciando
+         solo un bordo sottile a separarlo: sembrava un pezzo di pagina
+         "rotto" invece di un pannello flottante sopra il resto. */
+      border:1px solid rgba(255,255,255,0.14); border-radius:10px; box-shadow: 0 14px 36px rgba(0,0,0,0.55);
+      padding:0.55rem; animation: fade-in-up 0.15s ease;
+    }
+    .tag-picker-dropdown.open { display:block; }
+    .tag-picker-search { width:100%; margin-bottom:0.45rem; }
+    .tag-picker-options { max-height:230px; overflow-y:auto; display:flex; flex-direction:column; gap:1px; }
+    .tag-picker-option { padding:0.42rem 0.55rem; border-radius:6px; font-size:0.85rem; cursor:pointer; transition: background-color 0.12s ease; }
+    .tag-picker-option:hover { background: rgba(255,255,255,0.07); }
+
+    .stat-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap:0.9rem; }
+    .stat-card { background: var(--card); border-radius:10px; padding:1rem 1.1rem; border:1px solid rgba(255,255,255,0.03); transition: border-color 0.2s ease, transform 0.15s ease; animation: fade-in-up 0.3s ease backwards; }
+    .stat-card:hover { border-color: rgba(56,189,248,0.35); transform: translateY(-2px); }
+    .stat-label { font-size:0.7rem; text-transform:uppercase; letter-spacing:0.06em; color: var(--muted); margin-bottom:0.4rem; display:flex; align-items:center; gap:0.35rem; }
+    .stat-value { font-size:1.4rem; font-weight:700; line-height:1.2; }
+    .stat-sub { font-size:0.78rem; color: var(--muted); margin-top:0.2rem; }
+    .card-foot-link { font-size:0.8rem; }
+
+    /* Chi ha chiesto meno movimento al sistema non ne vede: niente animazioni
+       ne' transizioni, solo cambi di stato immediati. */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+      .live-dot { box-shadow: none; }
+    }
+
+    .nav-altro { display:none; background:transparent; border:none; font:inherit; cursor:pointer; text-align:left; font-weight:400; }
+
+    /* Tabelle -> schede su schermo stretto (classe tabella-card + data-label sulle celle). */
+    @media (max-width: 720px) {
+      table.tabella-card, .tabella-card tbody, .tabella-card tr, .tabella-card td { display:block; width:100%; }
+      .tabella-card tr:has(> th) { display:none; }
+      .tabella-card tr { padding:0.7rem 0.9rem; border-bottom:1px solid var(--border); }
+      .tabella-card tr:last-child { border-bottom:none; }
+      .tabella-card td { border:none; padding:0.22rem 0; display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:0.3rem 0.8rem; text-align:right; }
+      .tabella-card td > div:empty { display:none; }
+      .tabella-card td[data-label]::before { content: attr(data-label); flex:0 0 34%; text-align:left; color: var(--muted); font-size:0.72rem; text-transform:uppercase; letter-spacing:0.05em; }
+      .tabella-card td > * { min-width:0; }
+      .tabella-card td[colspan] { display:block; text-align:left; }
+      .tabella-card td.row-actions { justify-content:flex-end; }
+      .tabella-card td:not([data-label]):not([colspan]) { display:block; text-align:left; }
+      .tabella-card td form[style*="display:flex"] { flex:1; min-width:0; flex-wrap:nowrap; }
+      .tabella-card input[type="text"] { flex:1; min-width:0; max-width:100%; width:auto !important; }
+    }
+
+    /* Mobile: barra in basso (4 voci + "Altro" che apre il resto del menu). */
+    @media (max-width: 720px) {
+      .layout { flex-direction: column; }
+      main { padding: 1rem 1rem 5.5rem; }
+      .sidebar {
+        position: fixed; left:0; right:0; bottom:0; z-index:60; width:100%; top:auto; height:auto; align-self:auto;
+        flex-direction:row; flex-wrap:wrap; align-items:stretch; padding: 0.3rem 0.4rem calc(0.3rem + env(safe-area-inset-bottom, 0px));
+        border-top:1px solid var(--border); box-shadow: 0 -8px 24px rgba(0,0,0,0.35);
+        max-height: 80vh; overflow-y:auto;
+      }
+      .sidebar .brand { display:none; }
+      .sidebar nav { display:contents; }
+      .nav-section, .nav-section + .nav-section { display:contents; margin:0; }
+      .nav-section-title { display:none; }
+      .nav-item { flex: 1 1 20%; min-width:0; flex-direction:column; justify-content:center; gap:0.2rem; padding:0.45rem 0.2rem; margin:0; font-size:0.66rem; text-align:center; transform:none !important; }
+      .nav-item .nav-label { flex:none; white-space:normal; display:block; line-height:1.15; }
+      .nav-item::before { display:none; }
+      .nav-item.active::after { content:""; position:absolute; top:0; left:30%; right:30%; height:3px; border-radius:0 0 3px 3px; background:var(--accent); }
+      .nav-secondario { display:none; }
+      .nav-altro { display:flex; }
+      #alert-badge { position:absolute; top:0.1rem; right:22%; }
+      body.nav-aperto .nav-secondario { display:flex; flex: 0 0 25%; }
+      body.nav-aperto .nav-item { flex: 0 0 25%; }
+      body.nav-aperto .sidebar .user-box { display:flex; flex: 0 0 100%; align-items:center; justify-content:space-between; gap:0.75rem; padding:0.6rem 0.6rem 0.2rem; margin-top:0.3rem; }
+      body.nav-aperto .sidebar .user-box .muted { margin:0; }
+      body.nav-aperto .sidebar .user-box form { margin:0; }
+      body.nav-aperto .sidebar .user-box button { width:auto; }
+      .sidebar .user-box { display:none; }
+      body.nav-aperto::after { content:""; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:50; }
+      .toast-stack { top: 0.6rem; right: 0.6rem; left: 0.6rem; width:auto; }
+      .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .stat-grid .stat-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
+      .stat-value { font-size:1.25rem; }
+    }
+  </style>
+</head>
+<body{% if user %} class="has-layout"{% endif %}>
+  <div id="copia-live" class="visually-hidden" role="status" aria-live="polite"></div>
+  {% if user %}
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <svg width="32" height="32" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 12v38h26"/><circle cx="40" cy="30" r="3.8" fill="var(--accent)" stroke="none"/>
+        </svg>
+        <span>Limen</span>
+      </div>
+      <nav id="sidebar-nav">
+        <div class="nav-section">
+          <a href="/" class="nav-item {{ 'active' if request.url.path == '/' else '' }}">
+            <span class="nav-icon"><svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="1.5" width="6" height="6" rx="1.2"/><rect x="9.5" y="1.5" width="6" height="4" rx="1.2"/><rect x="9.5" y="7.5" width="6" height="8" rx="1.2"/><rect x="1.5" y="9.5" width="6" height="6" rx="1.2"/></svg></span>
+            <span class="nav-label">{{ t("Dashboard") }}</span>
+          </a>
+        </div>
+
+        <div class="nav-section">
+          <div class="nav-section-title">{{ t("Monitoraggio") }}</div>
+          <a href="/monitoraggio" class="nav-item {{ 'active' if request.url.path == '/monitoraggio' else '' }}">
+            <span class="nav-icon"><svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 9.5h3l2-5.5 3 9 2-6.5 1.5 3h3"/></svg></span>
+            <span class="nav-label">{{ t("Monitoraggio") }}</span>
+          </a>
+          <a href="/alert" class="nav-item {{ 'active' if request.url.path == '/alert' else '' }}">
+            <span class="nav-icon"><svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 1.8c-2 0-3.3 1.6-3.3 3.7 0 2.8-.6 4-1.7 5.3h10c-1.1-1.3-1.7-2.5-1.7-5.3 0-2.1-1.3-3.7-3.3-3.7Z"/><path d="M6.6 13.2a1.9 1.9 0 0 0 3.8 0"/></svg></span>
+            <span class="nav-label">{{ t("Alert") }}</span>
+            <span id="alert-badge" hx-get="/alert/count" hx-trigger="load, every 20s" hx-swap="innerHTML"></span>
+          </a>
+        </div>
+
+        <div class="nav-section">
+          <div class="nav-section-title">{{ t("Configurazione accessi") }}</div>
+          <a href="/persone" class="nav-item {{ 'active' if request.url.path == '/persone' else '' }}">
+            <span class="nav-icon"><svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6.3" cy="5" r="2.3"/><path d="M1.8 14c0-2.5 2-4 4.5-4s4.5 1.5 4.5 4"/><circle cx="12.2" cy="5.8" r="1.9"/><path d="M10.7 10.3c1.9.2 3.5 1.6 3.5 3.7"/></svg></span>
+            <span class="nav-label">{{ t("Persone") }}</span>
+          </a>
+          <a href="/visitatori" class="nav-item {{ 'active' if request.url.path == '/visitatori' else '' }}">
+            <span class="nav-icon"><svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.5" cy="5.2" r="2.4"/><path d="M3.8 14.2c0-2.7 2.1-4.4 4.7-4.4s4.7 1.7 4.7 4.4"/><path d="M13.2 2.2v2.6M11.9 3.5h2.6"/></svg></span>
+            <span class="nav-label">{{ t("Visitatori") }}</span>
+          </a>
+          <a href="/gruppi" class="nav-item nav-secondario {{ 'active' if request.url.path == '/gruppi' else '' }}">
+            <span class="nav-icon"><svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6.3" r="3.1"/><circle cx="11.3" cy="8.5" r="3.1"/></svg></span>
+            <span class="nav-label">{{ t("Gruppi") }}</span>
+          </a>
+          <a href="/varchi" class="nav-item nav-secondario {{ 'active' if request.url.path == '/varchi' else '' }}">
+            <span class="nav-icon"><svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 15V3.8a1 1 0 0 1 .8-1l6-1.2a1 1 0 0 1 1.2 1v12.4"/><path d="M3.5 15h9M11.5 15V2.6"/><circle cx="9.3" cy="8.5" r="0.75" fill="currentColor" stroke="none"/></svg></span>
+            <span class="nav-label">{{ t("Varchi") }}</span>
+          </a>
+          <a href="/fasce-orarie" class="nav-item nav-secondario {{ 'active' if request.url.path == '/fasce-orarie' else '' }}">
+            <span class="nav-icon"><svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.5" cy="8.5" r="6.8"/><path d="M8.5 4.5v4l2.8 2"/></svg></span>
+            <span class="nav-label">{{ t("Fasce orarie") }}</span>
+          </a>
+          <a href="/policy" class="nav-item nav-secondario {{ 'active' if request.url.path == '/policy' else '' }}">
+            <span class="nav-icon"><svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 1.8 14 3.6v4.3c0 4-2.4 6.6-5.5 7.7-3.1-1.1-5.5-3.7-5.5-7.7V3.6Z"/><path d="M6 8.6l1.8 1.8 3.2-3.6"/></svg></span>
+            <span class="nav-label">{{ t("Regole di accesso") }}</span>
+          </a>
+        </div>
+
+        <div class="nav-section">
+          <div class="nav-section-title">{{ t("Sistema") }}</div>
+          <a href="/sistema/info" class="nav-item nav-secondario {{ 'active' if request.url.path == '/sistema/info' else '' }}">
+            <span class="nav-icon"><svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.5" cy="8.5" r="6.8"/><path d="M8.5 5.6h.01M8.5 8v3.6"/></svg></span>
+            <span class="nav-label">{{ t("Info sistema") }}</span>
+          </a>
+          <a href="/sistema" class="nav-item nav-secondario {{ 'active' if request.url.path == '/sistema' else '' }}">
+            <span class="nav-icon"><svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 1.8 14 3.6v4.3c0 4-2.4 6.6-5.5 7.7-3.1-1.1-5.5-3.7-5.5-7.7V3.6Z"/><path d="M8.5 5.5v3.3M8.5 11.3h.01"/></svg></span>
+            <span class="nav-label">{{ t('Proprietà di sistema') if user.is_admin else t('Il mio account') }}</span>
+          </a>
+        </div>
+        <button type="button" class="nav-item nav-altro" id="nav-altro" aria-expanded="false" aria-controls="sidebar-nav">
+          <span class="nav-icon"><svg width="17" height="17" viewBox="0 0 17 17" fill="currentColor"><circle cx="3.5" cy="8.5" r="1.4"/><circle cx="8.5" cy="8.5" r="1.4"/><circle cx="13.5" cy="8.5" r="1.4"/></svg></span>
+          <span class="nav-label">{{ t("Altro") }}</span>
+        </button>
+      </nav>
+      <button type="button" id="da-fare-voce" hidden aria-expanded="false" aria-controls="da-fare"><span class="dafare-punto"></span><span>{{ t("Da fare") }}</span><span class="dafare-n" id="da-fare-n">0</span></button>
+      <div class="user-box">
+        <span class="muted">{{ user.username }}</span>
+        <form action="/logout" method="post">
+          <button type="submit" class="ghost">{{ t("Esci") }}</button>
+        </form>
+      </div>
+    </aside>
+    <div id="da-fare" class="dafare-pop" hidden hx-get="/da-fare?da={{ request.url.path|urlencode }}" hx-trigger="load, every 3s" hx-swap="innerHTML"></div>
+    <div class="content">
+      <main>
+        {% if user.password_predefinita %}<div class="flash-banner warn" role="alert"><span class="flash-testo">{{ t("Stai usando la password predefinita (admin / admin): chiunque nella rete potrebbe entrare.") }} <a href="/sistema">{{ t("Cambiala ora") }}</a></span></div>{% endif %}
+        {% set errore_comune = request.query_params.get('errore') %}
+        {% if errore_comune == 'dispositivo_offline' %}
+        <div class="flash-banner err" role="alert">{{ t("Comando non inviato: il dispositivo del varco è offline, quindi non lo riceverebbe. Controlla la connessione e riprova quando torna online.") }}</div>
+        {% elif errore_comune == 'apertura_non_inviata' %}
+        <div class="flash-banner err" role="alert">{{ t("Apertura non inviata: imposta l'indirizzo IP del dispositivo nella pagina Varchi, oppure controlla la rete del master.") }}</div>
+        {% elif errore_comune == 'varco_disattivato' %}
+        <div class="flash-banner err" role="alert">{{ t("Apertura bloccata: il varco è disattivato. Riattivalo per poterlo aprire.") }}</div>
+        {% endif %}
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+  </div>
+  {% else %}
+  <main>
+    {% block content_noauth %}{% endblock %}
+  </main>
+  {% endif %}
+
+  {#
+    Blocco per drawer/backdrop a position:fixed (vedi persone.html,
+    varchi.html): deve stare FUORI da <main>, non dentro. <main> ha una sua
+    animazione d'ingresso che usa "transform" (fade-in-up, qui sotto) — e
+    finché un elemento ha un transform attivo, diventa il "containing
+    block" per qualunque discendente con position:fixed, che quindi si
+    posiziona rispetto a quell'elemento invece che alla finestra. Un drawer
+    dentro <main> appariva quindi per i ~0.25s dell'animazione ancorato al
+    riquadro di <main> (più verso il centro pagina) invece che al bordo
+    destro dello schermo, per poi "scattare" nella posizione giusta non
+    appena l'animazione finiva e il transform tornava a "none".
+  #}
+  {% block overlay %}{% endblock %}
+
+  <dialog id="dialog-conferma" aria-labelledby="dc-titolo" aria-describedby="dc-testo">
+    <form method="dialog">
+      <h2 id="dc-titolo">{{ t("Confermi?") }}</h2>
+      <p id="dc-testo"></p>
+      <ul id="dc-impatto"></ul>
+      <div class="dc-azioni">
+        <button type="submit" value="{{ t('annulla') }}" class="ghost" id="dc-annulla" data-no-loading autofocus>{{ t("Annulla") }}</button>
+        <button type="submit" value="{{ t('ok') }}" class="danger" id="dc-ok" data-no-loading>{{ t("Conferma") }}</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+    // Tag picker generico (vedi templates/_macros.html): gestisce tutte le
+    // istanze presenti nella pagina tramite delega degli eventi, così non
+    // serve inizializzare nulla quando ce ne sono più di una (es. una per
+    // ogni gruppo nella pagina Gruppi).
+    (function () {
+      function closeAllDropdowns() {
+        document.querySelectorAll('.tag-picker-dropdown.open').forEach(function (d) {
+          d.classList.remove('open');
+        });
+      }
+
+      function filterOptions(dropdown, query) {
+        query = query.trim().toLowerCase();
+        var any = false;
+        dropdown.querySelectorAll('.tag-picker-option').forEach(function (o) {
+          var match = o.dataset.label.toLowerCase().indexOf(query) !== -1;
+          o.style.display = match ? '' : 'none';
+          if (match) any = true;
+        });
+        var empty = dropdown.querySelector('.tag-picker-option-empty');
+        if (empty && !dropdown.querySelector('.tag-picker-option')) {
+          // nessuna opzione configurata fin dall'inizio: messaggio sempre visibile
+          empty.style.display = '';
+        } else if (empty) {
+          empty.style.display = any ? 'none' : '';
+        }
+      }
+
+      function updateDropdownEmptyState(dropdown) {
+        var hasOptions = !!dropdown.querySelector('.tag-picker-option');
+        var empty = dropdown.querySelector('.tag-picker-option-empty');
+        if (empty) empty.style.display = hasOptions ? 'none' : '';
+      }
+
+      function updateChipsEmptyState(chips) {
+        var hasChips = !!chips.querySelector('.tag-chip');
+        var empty = chips.querySelector('.tag-picker-empty');
+        if (!hasChips && !empty) {
+          empty = document.createElement('span');
+          empty.className = 'tag-picker-empty';
+          empty.textContent = T('Nessuno selezionato');
+          chips.appendChild(empty);
+        } else if (hasChips && empty) {
+          empty.remove();
+        }
+      }
+
+      function addChip(picker, value, label) {
+        var chips = picker.querySelector('.tag-picker-chips');
+        var name = picker.dataset.name;
+
+        var chip = document.createElement('span');
+        chip.className = 'tag-chip';
+        chip.dataset.value = value;
+        chip.dataset.label = label;
+        chip.appendChild(document.createTextNode(label));
+
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'tag-chip-remove';
+        btn.setAttribute('aria-label', T('Rimuovi'));
+        btn.innerHTML = '&times;';
+        chip.appendChild(btn);
+
+        var input = document.createElement('input');
+        input.type = 'checkbox';
+        input.name = name;
+        input.value = value;
+        input.checked = true;
+        input.hidden = true;
+        chip.appendChild(input);
+
+        chips.appendChild(chip);
+        updateChipsEmptyState(chips);
+      }
+
+      function restoreOption(dropdown, value, label) {
+        var options = dropdown.querySelector('.tag-picker-options');
+        var opt = document.createElement('div');
+        opt.className = 'tag-picker-option';
+        opt.dataset.value = value;
+        opt.dataset.label = label;
+        opt.textContent = label;
+
+        var inserted = false;
+        Array.prototype.forEach.call(options.querySelectorAll('.tag-picker-option'), function (existing) {
+          if (!inserted && label.localeCompare(existing.dataset.label) < 0) {
+            options.insertBefore(opt, existing);
+            inserted = true;
+          }
+        });
+        if (!inserted) options.appendChild(opt);
+        updateDropdownEmptyState(dropdown);
+      }
+
+      document.addEventListener('click', function (e) {
+        var addBtn = e.target.closest('.tag-picker-add');
+        if (addBtn) {
+          var dropdown = addBtn.closest('.tag-picker-add-wrap').querySelector('.tag-picker-dropdown');
+          var wasOpen = dropdown.classList.contains('open');
+          closeAllDropdowns();
+          if (!wasOpen) {
+            dropdown.classList.add('open');
+            var search = dropdown.querySelector('.tag-picker-search');
+            if (search) {
+              search.value = '';
+              filterOptions(dropdown, '');
+              search.focus();
+            }
+          }
+          return;
+        }
+
+        var option = e.target.closest('.tag-picker-option');
+        if (option) {
+          var dropdown = option.closest('.tag-picker-dropdown');
+          var picker = option.closest('.tag-picker');
+          addChip(picker, option.dataset.value, option.dataset.label);
+          option.remove();
+          updateDropdownEmptyState(dropdown);
+          dropdown.classList.remove('open');
+          return;
+        }
+
+        var removeBtn = e.target.closest('.tag-chip-remove');
+        if (removeBtn) {
+          var chip = removeBtn.closest('.tag-chip');
+          var picker = chip.closest('.tag-picker');
+          var dropdown = picker.querySelector('.tag-picker-dropdown');
+          restoreOption(dropdown, chip.dataset.value, chip.dataset.label);
+          var chips = picker.querySelector('.tag-picker-chips');
+          chip.remove();
+          updateChipsEmptyState(chips);
+          return;
+        }
+
+        if (!e.target.closest('.tag-picker-dropdown')) {
+          closeAllDropdowns();
+        }
+      });
+
+      document.addEventListener('input', function (e) {
+        if (e.target.classList.contains('tag-picker-search')) {
+          filterOptions(e.target.closest('.tag-picker-dropdown'), e.target.value);
+        }
+      });
+    })();
+
+    // Disabilita il bottone che ha avviato il submit e mostra "..." finché
+    // la pagina non ricarica: evita il doppio invio su connessioni lente o
+    // su azioni che (come "Scarica dati ai dispositivi") aspettano qualche
+    // secondo prima di rispondere. Un form puo' disattivarlo aggiungendo
+    // data-no-loading al bottone, se il cambio di testo non è desiderato.
+    (function () {
+      document.addEventListener('submit', function (e) {
+        var submitter = e.submitter;
+        if (!submitter || submitter.tagName !== 'BUTTON' || submitter.disabled) return;
+        if ('noLoading' in submitter.dataset) return;
+        submitter.dataset.originalText = submitter.textContent;
+        submitter.disabled = true;
+        submitter.textContent = submitter.dataset.loadingText || '...';
+      });
+
+      // Tornando indietro col browser, la pagina può essere ripristinata dalla
+      // bfcache così com'era (bottone ancora disabilitato con "..."):
+      // riattiva i bottoni rimasti in quello stato.
+      window.addEventListener('pageshow', function (e) {
+        if (!e.persisted) return;
+        document.querySelectorAll('button[data-original-text]').forEach(function (b) {
+          b.disabled = false;
+          b.textContent = b.dataset.originalText;
+          delete b.dataset.originalText;
+        });
+      });
+    })();
+
+    // Scorciatoie da tastiera: "n" apre il primo pannello "+ Nuovo ..." della
+    // pagina e metti il focus sul primo campo, "/" metti il focus sulla
+    // ricerca (dove presente). Ignorate se si sta già scrivendo in un campo,
+    // o con un tasto modificatore premesso (evita conflitti con scorciatoie
+    // del browser/sistema).
+    (function () {
+      document.addEventListener('keydown', function (e) {
+        if (e.key !== 'n' && e.key !== '/') return;
+        if (e.metaKey || e.ctrlKey || e.altKey) return;
+        var tag = (e.target.tagName || '').toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) return;
+
+        if (e.key === '/') {
+          var search = document.querySelector('input[type="search"]');
+          if (search) {
+            e.preventDefault();
+            search.focus();
+          }
+          return;
+        }
+
+        apriPannelloNuovo(e);
+      });
+      function apriPannelloNuovo(e) {
+        var pannello = document.querySelector('details.card-toggle');
+        if (pannello) {
+          if (e && e.preventDefault) e.preventDefault();
+          pannello.open = true;
+          var primoCampo = pannello.querySelector('input, select, textarea');
+          if (primoCampo) primoCampo.focus();
+          pannello.scrollIntoView({ block: 'center' });
+        }
+      }
+      document.addEventListener('click', function (e) {
+        if (e.target.closest('[data-apri-pannello]')) apriPannelloNuovo(e);
+      });
+    })();
+
+    // Bottone "Copia": copia il testo di un elemento (data-copy-target, un
+    // selettore CSS) o un testo fisso (data-copy) negli appunti, con un
+    // breve feedback testuale sul bottone stesso. Usato per la chiave del
+    // varco (solo admin) e per gli altri valori da copiare: prima andavano selezionati a mano
+    // (scomodo via SSH/seriale), ora un click basta.
+    (function () {
+      document.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-copy], [data-copy-target]');
+        if (!btn) return;
+        var testo = btn.dataset.copy || '';
+        if (btn.dataset.copyTarget) {
+          var el = document.querySelector(btn.dataset.copyTarget);
+          if (el) testo = el.textContent;
+        }
+        if (!testo) return;
+        var feedback = function (etichetta) {
+          var originale = btn.dataset.originalLabel || btn.textContent;
+          btn.dataset.originalLabel = originale;
+          btn.textContent = etichetta;
+          var live = document.getElementById('copia-live'); if (live) live.textContent = etichetta === T('Copiato!') ? T('Copiato negli appunti') : etichetta;
+          setTimeout(function () { btn.textContent = originale; if (live) live.textContent = ''; }, 1500);
+        };
+        // navigator.clipboard esiste solo in contesto sicuro (https o
+        // localhost): la webapp di solito è aperta come http://<IP LAN>:8000,
+        // dove l'API manca del tutto. In quel caso si ripiega su
+        // execCommand('copy') con una textarea temporanea, che funziona
+        // anche senza TLS.
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(testo).then(
+            function () { feedback(T('Copiato!')); },
+            function () { feedback(copiaFallback(testo) ? T('Copiato!') : T('Copia non riuscita')); }
+          );
+        } else {
+          feedback(copiaFallback(testo) ? T('Copiato!') : T('Copia non riuscita'));
+        }
+      });
+
+      function copiaFallback(testo) {
+        var ta = document.createElement('textarea');
+        ta.value = testo;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        var ok = false;
+        try { ok = document.execCommand('copy'); } catch (err) { ok = false; }
+        document.body.removeChild(ta);
+        return ok;
+      }
+    })();
+
+    // Polling htmx delle tabelle "live" (vedi _varchi_tabella.html): salta il
+    // giro se l'utente sta lavorando dentro il blocco — focus su un campo, o
+    // un campo modificato e non ancora salvato — altrimenti la sostituzione
+    // ogni 8s cancellerebbe quello che sta scrivendo (es. l'IP in riga).
+    window.pollingLibero = function (el) {
+      if (el.contains(document.activeElement) && document.activeElement !== document.body) return false;
+      var campi = el.querySelectorAll('input, textarea, select');
+      for (var i = 0; i < campi.length; i++) {
+        var c = campi[i];
+        if (c.type === 'hidden') continue;
+        if (c.tagName === 'SELECT') {
+          for (var j = 0; j < c.options.length; j++) {
+            if (c.options[j].selected !== c.options[j].defaultSelected) return false;
+          }
+        } else if (c.type === 'checkbox' || c.type === 'radio') {
+          if (c.checked !== c.defaultChecked) return false;
+        } else if (c.value !== c.defaultValue) {
+          return false;
+        }
+      }
+      return true;
+    };
+
+    // Filtro istantaneo lato client su una tabella: digitando in un input
+    // con class="table-filter" e data-filter-target="#id-tabella", nasconde
+    // le righe (tranne l'intestazione) che non contengono il testo cercato.
+    // Niente round-trip al server: adatto a tabelle piccole (varchi, regole)
+    // e continua a funzionare anche dopo un aggiornamento via htmx, perché
+    // si applica a ogni digitazione, non una volta al caricamento.
+    (function () {
+      document.addEventListener('input', function (e) {
+        if (!e.target.classList.contains('table-filter')) return;
+        var selettore = e.target.dataset.filterTarget;
+        var tabella = selettore && document.querySelector(selettore);
+        if (!tabella) return;
+        var query = e.target.value.trim().toLowerCase();
+        var intestazione = tabella.querySelector('tr');
+        tabella.querySelectorAll('tr').forEach(function (riga) {
+          if (riga === intestazione) return;
+          var testo = riga.textContent.toLowerCase();
+          riga.style.display = (!query || testo.indexOf(query) !== -1) ? '' : 'none';
+        });
+      });
+
+      // Una tabella filtrata può essere sostituita da un refresh htmx (vedi
+      // Varchi: polling ogni 8s): rifiltra col termine corrente appena
+      // arrivano righe nuove, altrimenti il filtro sembrerebbe "dimenticato".
+      document.body.addEventListener('htmx:afterSwap', function () {
+        document.querySelectorAll('.table-filter').forEach(function (input) {
+          if (input.value) input.dispatchEvent(new Event('input'));
+        });
+      });
+    })();
+
+    // Schede: click, frecce/Home/End, e l'URL ricorda la scheda aperta (parametro nel data-schede-param).
+    (function () {
+      document.querySelectorAll('[data-schede]').forEach(function (box) {
+        var tabs = Array.prototype.slice.call(box.querySelectorAll('[role="tab"]'));
+        var param = box.dataset.schedeParam;
+        function mostra(tab, focus) {
+          tabs.forEach(function (t) {
+            var sel = t === tab;
+            t.setAttribute('aria-selected', sel ? 'true' : 'false'); t.tabIndex = sel ? 0 : -1;
+            var p = document.getElementById(t.getAttribute('aria-controls')); if (p) p.hidden = !sel;
+          });
+          if (focus) tab.focus();
+          if (param && window.history && history.replaceState) {
+            try { var u = new URL(window.location.href); u.searchParams.set(param, tab.dataset.scheda); history.replaceState(null, '', u); } catch (e) {}
+          }
+        }
+        tabs.forEach(function (t, i) {
+          t.tabIndex = t.getAttribute('aria-selected') === 'true' ? 0 : -1;
+          t.addEventListener('click', function () { mostra(t, false); });
+          t.addEventListener('keydown', function (e) {
+            var n = null;
+            if (e.key === 'ArrowRight') n = tabs[(i + 1) % tabs.length];
+            else if (e.key === 'ArrowLeft') n = tabs[(i - 1 + tabs.length) % tabs.length];
+            else if (e.key === 'Home') n = tabs[0]; else if (e.key === 'End') n = tabs[tabs.length - 1];
+            if (n) { e.preventDefault(); mostra(n, true); }
+          });
+        });
+      });
+    })();
+
+    // Icone "i": riquadro con la spiegazione al passaggio del mouse, al focus o al tocco (il tocco lo fissa).
+    (function () {
+      var pop = document.createElement('div'); pop.id = 'info-pop'; pop.setAttribute('role', 'tooltip'); pop.hidden = true; document.body.appendChild(pop);
+      var corrente = null, fissato = false, timer = null;
+      function chiudi() { clearTimeout(timer); pop.hidden = true; if (corrente) corrente.setAttribute('aria-expanded', 'false'); corrente = null; fissato = false; }
+      function apri(btn) {
+        clearTimeout(timer);
+        if (corrente && corrente !== btn) corrente.setAttribute('aria-expanded', 'false');
+        var testo = btn.nextElementSibling;
+        if (!testo || !testo.classList.contains('info-testo')) return;
+        corrente = btn; pop.innerHTML = testo.innerHTML; pop.hidden = false; btn.setAttribute('aria-expanded', 'true');
+        btn.setAttribute('aria-describedby', 'info-pop');
+        var r = btn.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight, m = 12;
+        var x = Math.min(Math.max(m, r.left + r.width / 2 - w / 2), window.innerWidth - w - m);
+        var y = r.bottom + 8; if (y + h > window.innerHeight - m && r.top - h - 8 > m) y = r.top - h - 8;
+        pop.style.left = x + 'px'; pop.style.top = y + 'px';
+      }
+      function ritarda() { clearTimeout(timer); if (!fissato) timer = setTimeout(chiudi, 150); }
+      document.addEventListener('mouseover', function (e) { var b = e.target.closest && e.target.closest('button.info'); if (b) apri(b); else if (e.target.closest && e.target.closest('#info-pop')) clearTimeout(timer); });
+      document.addEventListener('mouseout', function (e) { if (e.target.closest && (e.target.closest('button.info') || e.target.closest('#info-pop'))) ritarda(); });
+      document.addEventListener('focusin', function (e) { var b = e.target.closest && e.target.closest('button.info'); if (b) apri(b); });
+      document.addEventListener('focusout', function (e) { if (e.target.closest && e.target.closest('button.info') && !fissato) ritarda(); });
+      document.addEventListener('click', function (e) {
+        var b = e.target.closest && e.target.closest('button.info');
+        if (b) { e.preventDefault(); if (corrente === b && fissato) chiudi(); else { apri(b); fissato = true; } return; }
+        if (!e.target.closest('#info-pop')) chiudi();
+      });
+      // In fase di cattura: Esc chiude prima il riquadro, senza far chiudere anche il drawer sotto.
+      document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && corrente) { e.stopPropagation(); e.preventDefault(); chiudi(); } }, true);
+      window.addEventListener('scroll', function () { if (corrente && !fissato) chiudi(); }, true);
+      window.addEventListener('resize', chiudi);
+    })();
+
+    // Banner di esito temporanei (es. "Dati inviati e confermati..."): vengono
+    // spostati in un unico contenitore in alto a destra e si chiudono da soli
+    // (gli errori restano piu' a lungo), o col pulsante x. Passando il mouse
+    // sopra restano. Restano comunque nel log per chi vuole rivederli.
+    // Pulisce anche i parametri di query dall'URL, così un refresh non li
+    // fa ricomparire.
+    (function () {
+      var banner = document.querySelectorAll('.flash-banner');
+      if (!banner.length) return;
+      var stack = document.createElement('div');
+      stack.className = 'toast-stack';
+      document.body.appendChild(stack);
+      banner.forEach(function (el) {
+        var testo = document.createElement('div');
+        testo.className = 'flash-testo';
+        while (el.firstChild) testo.appendChild(el.firstChild);
+        el.appendChild(testo);
+        var x = document.createElement('button');
+        x.type = 'button'; x.className = 'flash-chiudi'; x.setAttribute('aria-label', T('Chiudi')); x.innerHTML = '&times;';
+        el.appendChild(x);
+        stack.appendChild(el);
+        var durata = el.classList.contains('err') ? 9000 : 4500;
+        var timer;
+        function chiudi() {
+          clearTimeout(timer);
+          el.classList.add('flash-hide');
+          setTimeout(function () { el.remove(); }, 400);
+        }
+        function avvia() { timer = setTimeout(chiudi, durata); }
+        x.addEventListener('click', chiudi);
+        el.addEventListener('mouseenter', function () { clearTimeout(timer); });
+        el.addEventListener('mouseleave', avvia);
+        avvia();
+      });
+      try {
+        var url = new URL(window.location.href);
+        // Tutti i parametri che fanno comparire un banner temporaneo da
+        // qualche parte nell'app: se uno manca qui, il banner sparisce dallo
+        // schermo dopo 4.5s ma un refresh della pagina lo fa ricomparire
+        // (l'URL lo porta ancora) — vedi /sistema (riavviato/pulizia/
+        // password/utente), /varchi e /persone (scaricato/confermati/
+        // totali), /varchi/{id}/apri (errore), /gruppi e /fasce-orarie
+        // (errore=nome_duplicato).
+        [
+          'scaricato', 'confermati', 'totali', 'errore',
+          'riavviato', 'pulizia', 'conservazione', 'eliminati', 'password', 'utente', 'sospesa', 'assegnato', 'aggiunta', 'importate', 'modalita', 'modalita_tutti', 'n', 'funz_salvato', 'abbinato', 'eliminato', 'attivo_cache', 'salvato', 'salvata', 'creato', 'nuovo_nome', 'nuovo_id', 'nuovo_ip',
+        ].forEach(function (p) { url.searchParams.delete(p); });
+        window.history.replaceState({}, '', url);
+      } catch (err) { /* ambiente senza History API (improbabile): nessun problema, resta solo l'URL com'è */ }
+    })();
+    // Drawer: dialog modale accessibile. Il focus passa al drawer all'apertura,
+    // Tab resta al suo interno, Esc (o il click sullo sfondo) lo chiude tornando
+    // alla lista, e la pagina sotto non scorre.
+    (function () {
+      // Sopra il drawer del varco puo' esserci il popup Funzionamento: e' lui il dialogo attivo.
+      var drawer = document.querySelector('.funz-popup') || document.querySelector('.drawer');
+      if (!drawer) return;
+      var sfondo = document.querySelector('.drawer-backdrop');
+      var chiudi = drawer.querySelector('.drawer-close');
+      var urlChiusura = (chiudi && chiudi.getAttribute('href')) || (sfondo && sfondo.getAttribute('href')) || window.location.pathname;
+      drawer.setAttribute('role', 'dialog');
+      drawer.setAttribute('aria-modal', 'true');
+      var titolo = drawer.querySelector('.drawer-header h2, .drawer-header strong, .p-head h2');
+      if (titolo) { titolo.id = titolo.id || 'drawer-titolo'; drawer.setAttribute('aria-labelledby', titolo.id); }
+      drawer.tabIndex = -1;
+      document.body.classList.add('drawer-aperto');
+      // Dopo un'azione che ricarica la pagina col drawer ancora aperto non rubare il focus se l'utente stava gia' scrivendo.
+      drawer.focus({ preventScroll: true });
+
+      function focalizzabili() {
+        return Array.prototype.filter.call(
+          drawer.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])'),
+          function (el) { return el.offsetParent !== null; }
+        );
+      }
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') {
+          // Esc chiude prima un eventuale menu a tendina aperto, poi il drawer.
+          var aperto = document.querySelector('.tag-picker-dropdown.open');
+          if (aperto) { aperto.classList.remove('open'); return; }
+          if (document.querySelector('dialog[open]')) return;
+          var ae = document.activeElement;
+          if (ae && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName)) { ae.blur(); return; }
+          window.location.href = urlChiusura;
+          return;
+        }
+        if (e.key !== 'Tab') return;
+        var f = focalizzabili();
+        if (!f.length) { e.preventDefault(); return; }
+        var primo = f[0], ultimo = f[f.length - 1];
+        if (!drawer.contains(document.activeElement)) { e.preventDefault(); primo.focus(); }
+        else if (e.shiftKey && (document.activeElement === primo || document.activeElement === drawer)) { e.preventDefault(); ultimo.focus(); }
+        else if (!e.shiftKey && document.activeElement === ultimo) { e.preventDefault(); primo.focus(); }
+      });
+    })();
+
+    // Menu mobile: "Altro" apre/chiude le voci secondarie.
+    (function () {
+      var b = document.getElementById('nav-altro');
+      if (!b) return;
+      function imposta(aperto) {
+        document.body.classList.toggle('nav-aperto', aperto);
+        b.setAttribute('aria-expanded', aperto ? 'true' : 'false');
+      }
+      b.addEventListener('click', function () { imposta(!document.body.classList.contains('nav-aperto')); });
+      document.addEventListener('click', function (e) {
+        if (document.body.classList.contains('nav-aperto') && !e.target.closest('.sidebar')) imposta(false);
+      });
+      document.addEventListener('keydown', function (e) { if (e.key === 'Escape') imposta(false); });
+    })();
+
+    // Conferma per le azioni distruttive: un bottone con data-conferma apre il dialog
+    // invece di inviare subito. Attributi: data-conferma (spiegazione), -titolo,
+    // -impatto (voci separate da ;, con {n|singolare|plurale} = persone selezionate e
+    // {campo:nome} = valore di un campo del form), -azione (testo del bottone),
+    // -tono="neutro" (bottone non rosso), -senza-selezione (messaggio se non c'e' nulla di selezionato).
+    (function () {
+      var dlg = document.getElementById('dialog-conferma');
+      if (!dlg || typeof dlg.showModal !== 'function') return;
+      var elTitolo = document.getElementById('dc-titolo'), elTesto = document.getElementById('dc-testo');
+      var elImpatto = document.getElementById('dc-impatto'), ok = document.getElementById('dc-ok'), annulla = document.getElementById('dc-annulla');
+      var origine = null;
+
+      function selezionate() { return document.querySelectorAll('input[name="persona_ids"]:checked').length; }
+      function riempi(testo, bottone) {
+        var n = selezionate();
+        return testo
+          .replace(/\{n\|([^|}]*)\|([^}]*)\}/g, function (_, s, p) { return n + ' ' + (n === 1 ? s : p); })
+          .replace(/\{campo:([a-z_]+)\}/g, function (_, nome) {
+            var f = bottone.form && bottone.form.elements[nome];
+            return f && f.value !== '' ? f.value : '0';
+          });
+      }
+
+      document.addEventListener('click', function (e) {
+        var b = e.target.closest('[data-conferma]');
+        if (!b || b.disabled) return;
+        if (b.dataset.confermato) { delete b.dataset.confermato; return; }
+        if (b.form && !b.form.checkValidity()) return;   // campi mancanti o non validi: prima li segnala il browser, poi si chiede conferma
+        e.preventDefault();
+        origine = b;
+        var vuoto = b.dataset.confermaSenzaSelezione && selezionate() === 0;
+        elTitolo.textContent = vuoto ? T('Nessuna selezione') : (b.dataset.confermaTitolo || T('Confermi?'));
+        elTesto.textContent = vuoto ? b.dataset.confermaSenzaSelezione : b.dataset.conferma;
+        elImpatto.textContent = '';
+        if (!vuoto && b.dataset.confermaImpatto) {
+          b.dataset.confermaImpatto.split(';').forEach(function (voce) {
+            if (!voce.trim()) return;
+            var li = document.createElement('li');
+            li.textContent = riempi(voce.trim(), b);
+            elImpatto.appendChild(li);
+          });
+        }
+        ok.hidden = !!vuoto;
+        ok.textContent = b.dataset.confermaAzione || T('Conferma');
+        ok.className = b.dataset.confermaTono === 'neutro' ? '' : 'danger';
+        annulla.textContent = vuoto ? T('Chiudi') : T('Annulla');
+        dlg.returnValue = '';
+        dlg.showModal();
+        annulla.focus();
+      });
+      // Click sullo sfondo = annulla.
+      dlg.addEventListener('click', function (e) {
+        if (e.target === dlg) dlg.close('annulla');
+      });
+      dlg.addEventListener('close', function () {
+        var b = origine; origine = null;
+        if (dlg.returnValue === 'ok' && b) { b.dataset.confermato = '1'; b.click(); }
+      });
+    })();
+
+    // «Da fare»: elenco aggiornato ogni 3 s da /da-fare. La voce nella barra laterale mostra il contatore; una voce NUOVA
+    // (mai notificata in questa sessione del browser) arriva anche come breve notifica in alto a destra con il suo tasto.
+    (function () {
+      var voce = document.getElementById('da-fare-voce'), pop = document.getElementById('da-fare'), num = document.getElementById('da-fare-n');
+      if (!voce || !pop) return;
+      function notificate() { try { return JSON.parse(sessionStorage.getItem('gk-dafare') || '[]'); } catch (e) { return []; } }
+      function salva(l) { try { sessionStorage.setItem('gk-dafare', JSON.stringify(l)); } catch (e) {} }
+      function stack() {
+        var s = document.querySelector('.toast-stack');
+        if (!s) { s = document.createElement('div'); s.className = 'toast-stack'; document.body.appendChild(s); }
+        return s;
+      }
+      function toast(card) {
+        var el = document.createElement('div'), urgente = card.classList.contains('err');
+        el.className = 'flash-banner ' + (card.classList.contains('warn') ? 'warn' : (urgente ? 'err' : 'info')); el.setAttribute('role', 'status');
+        var t = document.createElement('div'); t.className = 'flash-testo';
+        var b = card.querySelector('.dafare-testo b'), p = card.querySelector('.dafare-testo small');
+        t.innerHTML = '<strong></strong><div style="color:var(--muted);font-size:0.8rem"></div>';
+        t.firstChild.textContent = card.dataset.titolo || (b ? b.textContent : ''); t.lastChild.textContent = p ? p.textContent : '';
+        var f = card.querySelector('form');
+        if (f) { var w = document.createElement('div'); w.className = 'dafare-azione'; w.appendChild(f.cloneNode(true)); t.appendChild(w); }
+        el.appendChild(t);
+        var x = document.createElement('button'); x.type = 'button'; x.className = 'flash-chiudi'; x.setAttribute('aria-label', T('Chiudi')); x.innerHTML = '&times;'; el.appendChild(x);
+        var timer;
+        function chiudi() { clearTimeout(timer); el.classList.add('flash-hide'); setTimeout(function () { el.remove(); }, 400); }
+        x.addEventListener('click', chiudi);
+        el.addEventListener('mouseenter', function () { clearTimeout(timer); });
+        el.addEventListener('mouseleave', function () { if (!urgente) timer = setTimeout(chiudi, 4000); });
+        stack().appendChild(el);
+        if (!urgente) timer = setTimeout(chiudi, 6000);
+      }
+      function apri(si) { pop.hidden = !si; voce.setAttribute('aria-expanded', si ? 'true' : 'false'); }
+      voce.addEventListener('click', function () { apri(pop.hidden); });
+      document.addEventListener('click', function (e) { if (!pop.hidden && !pop.contains(e.target) && !voce.contains(e.target)) apri(false); });
+      document.addEventListener('keydown', function (e) { if (e.key === 'Escape') apri(false); });
+      document.body.addEventListener('htmx:afterSwap', function (e) {
+        if (e.target !== pop) return;
+        var carte = pop.querySelectorAll('.dafare-card'), n = carte.length;
+        voce.hidden = n === 0; num.textContent = n;
+        if (!n) apri(false);
+        var cl = 'warn', pulsa = false;
+        carte.forEach(function (c) { if (c.classList.contains('err')) cl = 'err'; else if (c.classList.contains('info') && cl !== 'err') { cl = 'info'; } if (c.querySelector('.pulsa')) pulsa = true; });
+        voce.className = cl === 'info' ? '' : cl; if (pulsa) voce.classList.add('pulsa');
+        var visti = notificate(), chiavi = [];
+        carte.forEach(function (c) { var k = c.dataset.chiave; if (!k) return; chiavi.push(k); if (visti.indexOf(k) < 0) toast(c); });
+        salva(chiavi);
+      });
+    })();
+
+    // Contatore alert: fermo, con un solo "ping" quando il numero aumenta.
+    (function () {
+      var precedente = 0;
+      document.body.addEventListener('htmx:afterSwap', function (e) {
+        if (!e.target || e.target.id !== 'alert-badge') return;
+        var b = e.target.querySelector('.nav-badge');
+        var n = b ? parseInt(b.textContent, 10) || 0 : 0;
+        if (b && n > precedente) { b.classList.add('ping'); }
+        precedente = n;
+      });
+    })();
+  </script>
+</body>
+</html>

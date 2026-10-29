@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Limen — Inbound API</title>
+<style>
+@font-face { font-family: "Inter"; src: url("../static/fonts/inter-var.woff") format("woff"); font-weight: 100 900; }
+@font-face { font-family: "JetBrains Mono"; src: url("../static/fonts/jetbrains-mono-var.woff") format("woff"); font-weight: 100 800; }
+:root {
+  --navy: #0b1222; --navy-2: #16233d; --ink: #1b2437; --muted: #5d6b82; --line: #dfe5ee;
+  --cyan: #0ea5e9; --cyan-soft: #e6f5fd; --soft: #f4f7fb; --ok: #15803d; --ok-soft: #e7f6ec; --warn: #b45309; --warn-soft: #fdf1df;
+}
+@page { size: A4; margin: 22mm 20mm 22mm 20mm;
+  @bottom-left { content: "Limen · Inbound API"; font: 500 8pt Inter, sans-serif; color: #8b9bb4; }
+  @bottom-right { content: counter(page); font: 500 8pt Inter, sans-serif; color: #8b9bb4; } }
+@page :first { margin: 0; @bottom-left { content: none; } @bottom-right { content: none; } }
+* { box-sizing: border-box; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { margin: 0; font: 400 10pt/1.55 Inter, sans-serif; color: var(--ink); }
+code, pre { font-family: "JetBrains Mono", monospace; font-variant-ligatures: none; }
+
+/* copertina */
+.cover { height: 297mm; width: 210mm; background: var(--navy); color: #e2e8f0; padding: 26mm 24mm; position: relative; overflow: hidden; page-break-after: always; break-after: page; }
+.cover::before { content: ""; position: absolute; right: -60mm; top: -50mm; width: 170mm; height: 170mm; border-radius: 50%; background: radial-gradient(circle at 35% 35%, rgba(56,189,248,.35), rgba(56,189,248,0) 65%); }
+.cover::after { content: ""; position: absolute; left: 0; bottom: 0; width: 100%; height: 3mm; background: linear-gradient(90deg, #38bdf8, rgba(56,189,248,0)); }
+.logo { display: flex; align-items: center; gap: 4mm; font-weight: 700; font-size: 15pt; letter-spacing: -.01em; color: #fff; position: relative; }
+.logo svg { width: 13mm; height: 13mm; }
+.cover h1 { position: relative; margin: 78mm 0 0; font-size: 44pt; line-height: 1.02; letter-spacing: -.03em; color: #fff; font-weight: 700; }
+.cover h1 span { color: #38bdf8; }
+.cover .sub { position: relative; margin-top: 8mm; max-width: 120mm; font-size: 13pt; line-height: 1.5; color: #a9b8d0; }
+.cover .meta { position: absolute; left: 24mm; right: 24mm; bottom: 26mm; display: flex; gap: 10mm; border-top: 1px solid rgba(255,255,255,.14); padding-top: 6mm; }
+.cover .meta div { font-size: 8.5pt; color: #8b9bb4; text-transform: uppercase; letter-spacing: .08em; }
+.cover .meta b { display: block; margin-top: 1.5mm; font: 500 10.5pt "JetBrains Mono", monospace; color: #e2e8f0; text-transform: none; letter-spacing: 0; }
+
+/* contenuto */
+h2 { margin: 11mm 0 3mm; font-size: 19pt; letter-spacing: -.02em; color: var(--navy); font-weight: 700; display: flex; align-items: baseline; gap: 3mm; break-after: avoid; }
+h2 .n { font: 600 10pt "JetBrains Mono", monospace; color: var(--cyan); }
+h2:first-of-type, h2.nuova-pagina { margin-top: 0; }
+h3 { margin: 6mm 0 2mm; font-size: 11pt; color: var(--navy); break-after: avoid; }
+p { margin: 0 0 3mm; }
+.lead { font-size: 11pt; color: #3a465c; margin-bottom: 5mm; }
+ul { margin: 0 0 3mm; padding-left: 5mm; } li { margin: 0 0 1.2mm; }
+code { font-size: 8.6pt; background: var(--soft); border: 1px solid var(--line); border-radius: 3px; padding: .2mm 1.2mm; color: #0b3b57; }
+pre { margin: 2mm 0 4mm; padding: 4mm 5mm; background: var(--navy); color: #dbe6f5; border-radius: 2.5mm; font-size: 8pt; line-height: 1.6; white-space: pre-wrap; word-break: break-word; break-inside: avoid; }
+pre code { background: none; border: 0; padding: 0; color: inherit; font-size: inherit; }
+pre .c { color: #7b8aa5; } pre .k { color: #7dd3fc; } pre .s { color: #a7f3d0; }
+table { width: 100%; border-collapse: collapse; margin: 2mm 0 4mm; font-size: 9pt; break-inside: avoid; }
+th { text-align: left; font-size: 7.5pt; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding: 2mm 3mm; border-bottom: 1.5px solid var(--navy); }
+td { padding: 2.2mm 3mm; border-bottom: 1px solid var(--line); vertical-align: top; }
+td:first-child { white-space: nowrap; }
+.note { margin: 3mm 0 4mm; padding: 3.5mm 5mm; border-radius: 2.5mm; background: var(--cyan-soft); border-left: 1.2mm solid var(--cyan); break-inside: avoid; }
+.note.warn { background: var(--warn-soft); border-left-color: var(--warn); }
+.note b { color: var(--navy); }
+.cards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4mm; margin: 3mm 0 5mm; }
+.card { border: 1px solid var(--line); border-radius: 3mm; padding: 4mm; background: var(--soft); break-inside: avoid; }
+.card b { display: block; font-size: 10pt; color: var(--navy); margin-bottom: 1mm; }
+.card span { font-size: 8.8pt; color: #4a566c; }
+.toc { margin: 4mm 0 0; padding: 0; list-style: none; counter-reset: t; }
+.toc li { display: flex; gap: 4mm; align-items: baseline; padding: 2.4mm 0; border-bottom: 1px solid var(--line); font-weight: 500; }
+.toc li::before { counter-increment: t; content: counter(t, decimal-leading-zero); font: 600 9pt "JetBrains Mono", monospace; color: var(--cyan); }
+.toc li small { margin-left: auto; color: var(--muted); font-weight: 400; font-size: 8.5pt; }
+
+/* endpoint */
+.ep { margin: 6mm 0 8mm; break-inside: avoid; }
+.nuova-pagina { break-before: page; }
+.ep-head { display: flex; align-items: center; gap: 3mm; padding: 3mm 4mm; background: var(--soft); border: 1px solid var(--line); border-radius: 2.5mm; break-after: avoid; }
+.m { font: 700 8pt "JetBrains Mono", monospace; letter-spacing: .04em; padding: 1mm 2.4mm; border-radius: 1.5mm; color: #fff; }
+.m.get { background: #0f766e; } .m.post { background: #0369a1; }
+.path { font: 600 10.5pt "JetBrains Mono", monospace; color: var(--navy); }
+.ep p.d { margin: 3mm 0 2mm; }
+.lbl { font-size: 7.5pt; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); font-weight: 600; margin: 3mm 0 0; break-after: avoid; }
+.status { display: inline-block; font: 600 8pt "JetBrains Mono", monospace; padding: .4mm 1.8mm; border-radius: 1.5mm; background: var(--ok-soft); color: var(--ok); }
+</style>
+</head>
+<body>
+
+<section class="cover">
+  <div class="logo">
+    <svg viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#0f1a2e" stroke="rgba(255,255,255,.14)"/><g fill="none" stroke="#e6edf7" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12v38h26"/></g><circle cx="40" cy="30" r="3.8" fill="#38bdf8"/></svg>
+    Limen
+  </div>
+  <h1>Inbound<br><span>API</span></h1>
+  <p class="sub">Read gates, people and events, create visitors and badges, and open a gate from your own software.</p>
+  <div class="meta">
+    <div>Version<b>v1</b></div>
+    <div>Base URL<b>https://SERVER:8443/api/v1</b></div>
+    <div>Format<b>JSON · HTTPS</b></div>
+  </div>
+</section>
+
+<h2><span class="n">00</span>Overview</h2>
+<p class="lead">The API is <b>inbound only</b>: your program calls Limen, Limen never calls your systems.</p>
+<ul class="toc">
+  <li>Accounts<small>who can use the API</small></li>
+  <li>Authentication<small>login and token</small></li>
+  <li>Errors<small>status codes</small></li>
+  <li>Endpoints<small>gates, people, events, visitors, badges, open</small></li>
+  <li>Typical flow<small>a complete example</small></li>
+</ul>
+<div class="note"><b>Replace <code>SERVER</code></b> in every example with the address of your Limen server (shown in your browser, e.g. <code>192.168.1.16</code>). The server uses HTTPS on port 8443; with the default self-signed certificate, add <code>-k</code> to <code>curl</code> or install the certificate on the client.</div>
+
+<h2><span class="n">01</span>Accounts</h2>
+<p>API accounts are created by an administrator in <b>System properties → API</b>. Each account has a username and a password. The password is shown <b>once</b> at creation and is stored only as a bcrypt hash.</p>
+<div class="cards">
+  <div class="card"><b>Full access</b><span>Every account can use the whole API. There are no per-account permissions to manage.</span></div>
+  <div class="card"><b>One per program</b><span>Give each program its own account, so you can revoke one without touching the others.</span></div>
+  <div class="card"><b>Revocable</b><span>An administrator can revoke an account, issue a new password or delete it. Tokens stop working immediately.</span></div>
+</div>
+
+<h2 class="nuova-pagina"><span class="n">02</span>Authentication</h2>
+<p>Send the username and password in the JSON body. You get a token valid for <b>48 hours</b>; when it expires, log in again.</p>
+<div class="lbl">Request</div>
+<pre><code>curl -k -X POST https://SERVER:8443/api/v1/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{"username": "portineria", "password": "YOUR_PASSWORD"}'</code></pre>
+<div class="lbl">Response <span class="status">200</span></div>
+<pre><code>{ "access_token": "k3J…", "token_type": "bearer",
+  "expires_in": 172800, "expires_at": "2026-11-02T10:00:00Z" }</code></pre>
+<p>Use the token on every other request:</p>
+<pre><code>Authorization: Bearer &lt;access_token&gt;</code></pre>
+<ul>
+  <li>Tokens are random 256-bit values; the server stores only their SHA-256 fingerprint.</li>
+  <li>After <b>5 wrong attempts in 15 minutes</b> (same client address and username) login answers <code>429</code> with a <code>Retry-After</code> header.</li>
+  <li>The server is meant to be reached over <b>HTTPS</b> only, so credentials and tokens are never sent in clear text.</li>
+</ul>
+
+<h2><span class="n">03</span>Errors</h2>
+<p>Errors have the form <code>{"detail": "message"}</code>.</p>
+<table>
+  <tr><th>Status</th><th>Meaning</th></tr>
+  <tr><td><code>401</code></td><td>wrong credentials, or missing / invalid / expired token</td></tr>
+  <tr><td><code>404</code></td><td>object not found</td></tr>
+  <tr><td><code>409</code></td><td>conflict (badge already assigned, gate disabled)</td></tr>
+  <tr><td><code>422</code></td><td>invalid body or parameters</td></tr>
+  <tr><td><code>429</code></td><td>too many failed logins</td></tr>
+  <tr><td><code>503</code></td><td>gate device offline, command not sent</td></tr>
+</table>
+
+<h2 class="nuova-pagina"><span class="n">04</span>Endpoints</h2>
+<div class="note warn"><b>Dates.</b> All date-times are ISO 8601. For <b>people</b> they are <b>local time</b> (no zone); for <b>events</b> they are <b>UTC</b> with a trailing <code>Z</code>.</div>
+
+<div class="ep">
+  <div class="ep-head"><span class="m get">GET</span><span class="path">/gates</span></div>
+  <p class="d">List of gates. <code>mode</code> is one of <code>normal</code>, <code>scheduled_unlock</code>, <code>maintenance</code>, <code>emergency</code>.</p>
+  <div class="lbl">Response <span class="status">200</span></div>
+<pre><code>[{"id": 1, "name": "Main entrance", "enabled": true, "mode": "normal"}]</code></pre>
+</div>
+
+<div class="ep">
+  <div class="ep-head"><span class="m get">GET</span><span class="path">/people</span></div>
+  <p class="d">List of people and visitors.</p>
+  <table>
+    <tr><th>Query</th><th>Description</th></tr>
+    <tr><td><code>q</code></td><td>words matched on first and last name</td></tr>
+    <tr><td><code>visitors</code></td><td><code>true</code> or <code>false</code>: only visitors, or only people</td></tr>
+    <tr><td><code>limit</code></td><td>default 200, max 1000</td></tr>
+  </table>
+  <div class="lbl">Response <span class="status">200</span></div>
+<pre><code>[{"id": 7, "first_name": "Mario", "last_name": "Rossi", "visitor": true, "active": true,
+  "valid_from": null, "valid_until": "2026-11-03T18:00", "badges": ["04A1B2C3"]}]</code></pre>
+</div>
+
+<div class="ep">
+  <div class="ep-head"><span class="m get">GET</span><span class="path">/events</span></div>
+  <p class="d">Latest passages, newest first.</p>
+  <table>
+    <tr><th>Query</th><th>Description</th></tr>
+    <tr><td><code>since</code></td><td>only events from this UTC date-time on</td></tr>
+    <tr><td><code>gate_id</code></td><td>only this gate</td></tr>
+    <tr><td><code>limit</code></td><td>default 100, max 1000</td></tr>
+  </table>
+  <p>Possible <code>result</code> values: <code>granted</code>, <code>denied_unknown_credential</code>, <code>denied_outside_schedule</code>, <code>denied_no_rule</code>, <code>denied_credential_disabled</code>, <code>denied_credential_expired</code>, <code>denied_anti_passback</code>, <code>denied_gate_disabled</code>, <code>denied_gate_maintenance</code>, <code>denied_gate_not_authorized</code>, <code>denied_rule_disabled</code>, <code>denied_data_outdated</code>, <code>door_forced</code>, <code>door_left_open</code>, <code>remote_open</code>, <code>external_open</code>, <code>input_activated</code>, <code>output_triggered</code>.</p>
+  <div class="lbl">Response <span class="status">200</span></div>
+<pre><code>[{"id": 981, "timestamp": "2026-10-30T08:12:44Z", "gate": "Main entrance",
+  "result": "granted", "badge": "04A1B2C3", "person_id": 7}]</code></pre>
+</div>
+
+<div class="ep">
+  <div class="ep-head"><span class="m post">POST</span><span class="path">/visitors</span></div>
+  <p class="d">Creates a visitor. The expiry <code>valid_until</code> is <b>mandatory</b> and applies to the person and to the badge.</p>
+  <table>
+    <tr><th>Field</th><th>Description</th></tr>
+    <tr><td><code>first_name</code>, <code>last_name</code></td><td>required</td></tr>
+    <tr><td><code>valid_until</code></td><td>required, end of validity (local time)</td></tr>
+    <tr><td><code>valid_from</code></td><td>optional, start of validity; default: now</td></tr>
+    <tr><td><code>badge_code</code></td><td>optional, badge to attach right away</td></tr>
+  </table>
+<pre><code>curl -k -X POST https://SERVER:8443/api/v1/visitors \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"first_name":"Mario","last_name":"Rossi","valid_until":"2026-11-03T18:00","badge_code":"04A1B2C3"}'</code></pre>
+  <p>Returns <span class="status">201</span> with the person object, or <code>409</code> if the badge is already assigned.</p>
+  <div class="note">A visitor has <b>no access rules</b> until you give them some in the web interface (for example by adding them to a group).</div>
+</div>
+
+<div class="ep">
+  <div class="ep-head"><span class="m post">POST</span><span class="path">/people/{id}/badges</span></div>
+  <p class="d">Attaches a badge to a person.</p>
+<pre><code>{"code": "04A1B2C3"}</code></pre>
+  <p>Returns <span class="status">201</span> with the person, or <code>409</code> if the badge is already assigned.</p>
+</div>
+
+<div class="ep">
+  <div class="ep-head"><span class="m post">POST</span><span class="path">/gates/{id}/open</span></div>
+  <p class="d">Sends the open command to the gate. It is fire-and-forget (UDP): <code>503</code> if the device is offline.</p>
+  <div class="lbl">Response <span class="status">200</span></div>
+<pre><code>{"gate_id": 1, "sent": true}</code></pre>
+</div>
+
+<h2><span class="n">05</span>Typical flow</h2>
+<ul>
+  <li><code>POST /auth/token</code> once; keep the token and its <code>expires_at</code>.</li>
+  <li>Call the endpoints with <code>Authorization: Bearer</code>.</li>
+  <li>On <code>401</code>, log in again and retry once.</li>
+</ul>
+<div class="lbl">Example in Python</div>
+<pre><code><span class="k">import</span> requests
+
+BASE = <span class="s">"https://SERVER:8443/api/v1"</span>
+s = requests.Session(); s.verify = <span class="k">False</span>   <span class="c"># self-signed certificate: better, pass the certificate path</span>
+
+r = s.post(f<span class="s">"{BASE}/auth/token"</span>, json={<span class="s">"username"</span>: <span class="s">"portineria"</span>, <span class="s">"password"</span>: <span class="s">"…"</span>})
+token = r.json()[<span class="s">"access_token"</span>]
+s.headers[<span class="s">"Authorization"</span>] = f<span class="s">"Bearer {token}"</span>
+
+v = s.post(f<span class="s">"{BASE}/visitors"</span>, json={<span class="s">"first_name"</span>: <span class="s">"Mario"</span>, <span class="s">"last_name"</span>: <span class="s">"Rossi"</span>, <span class="s">"valid_until"</span>: <span class="s">"2026-11-03T18:00"</span>}).json()
+s.post(f<span class="s">"{BASE}/people/{v['id']}/badges"</span>, json={<span class="s">"code"</span>: <span class="s">"04A1B2C3"</span>})</code></pre>
+
+</body>
+</html>

@@ -1,0 +1,66 @@
+{% from "_macros.html" import vuoto %}
+{#
+  Tabella dei varchi, isolata in un partial perché è sia la tabella mostrata
+  al primo caricamento di /varchi sia la risposta dell'endpoint di polling
+  /varchi/stato-live (vedi commento hx-trigger sotto): stesso identico
+  markup nei due casi, un solo posto da aggiornare.
+
+  Il div con id="varchi-live" porta lui stesso gli attributi htmx di
+  polling: ogni risposta li deve riportare, altrimenti con hx-swap=
+  "outerHTML" il polling si fermerebbe al primo giro (l'elemento che li
+  porta viene sostituito con uno nuovo che non li ha più, a meno che la
+  risposta non li includa di nuovo — come fa questo stesso partial).
+#}
+<div id="varchi-live" hx-get="/varchi/stato-live" hx-trigger="every 4s [pollingLibero(this)]" hx-swap="outerHTML">
+  <table class="tabella-card" id="varchi-table">
+    <tr><th>{{ t("Varco") }}</th><th>{{ t("Stato") }}</th><th>{{ t("IP (canale UDP)") }}</th><th>{{ t("Ultimo heartbeat") }}</th><th></th><th></th></tr>
+    {% for v in varchi %}
+    <tr class="riga-varco" onclick="if(!event.target.closest('form,button,input,a'))location.href='/varchi?apri={{ v.id }}'">
+      <td>
+        <strong>{{ v.nome }}</strong>
+        <br><span class="muted">{{ v.descrizione or "" }}</span>
+      </td>
+      <td style="white-space:nowrap;" data-label="Stato">
+        {% if v.online %}
+          <span class="badge ok">{{ t("online") }}</span>
+        {% else %}
+          <span class="badge err">{{ t("offline") }}</span>
+          {% if v.scarto_breve %}<span class="badge warning" style="margin-left:0.35rem;" title="{{ v.scarto_testo }}">{{ v.scarto_breve }}</span>{% endif %}
+        {% endif %}
+        {% if not v.attivo %}<span class="badge err" style="margin-left:0.35rem;">{{ t("disattivato") }}</span>{% endif %}
+        {% if v.modalita != 'normale' %}<span class="badge {{ 'err' if v.modalita == 'emergenza' else 'warning' }}" style="margin-left:0.35rem;">{{ {'sblocco': 'sblocco', 'manutenzione': 'manutenzione', 'emergenza': t('EMERGENZA')}[v.modalita] }}</span>{% endif %}
+        {% if v.sensore_porta and v.online and v.porta_stato %}
+        <br><span class="muted" style="font-size:0.75rem;" title="{{ t('Sensore porta, aggiornato %(ora)s', ora=v.porta_stato_at|ora) if v.porta_stato_at else t('Sensore porta') }}">
+          {{ t("porta %(p1)s", p1=v.porta_stato) }}
+        </span>
+        {% elif v.sensore_porta and not v.online %}
+        <br><span class="muted" style="font-size:0.75rem;" title="{{ t('Il dispositivo non risponde: lo stato della porta non e\' noto') }}">
+          {{ t("porta: stato non disponibile") }}
+        </span>
+        {% endif %}
+        {% if v.deriva_sec is not none %}
+        <br><span class="muted" style="font-size:0.75rem;" title="{{ t('Scarto dell\'orologio del dispositivo rispetto al master') }}">
+          {{ t("orologio fuori di %(p1)s s", p1=v.deriva_sec|abs|round|int) }}{% if v.deriva_corretta %} {{ t("· compensato") }}{% endif %}
+        </span>
+        {% endif %}
+      </td>
+      <td data-label="IP (canale UDP)">
+        <form class="inline" method="post" action="/varchi/{{ v.id }}/ip" style="display:flex; gap:0.4rem;">
+          <input type="text" name="ip_address" value="{{ v.ip_address or '' }}" placeholder="{{ t('es. 192.168.1.50') }}" style="width:11rem;">
+          <button type="submit">{{ t("Salva") }}</button>
+        </form>
+      </td>
+      <td data-label="Ultimo heartbeat">{{ v.ultimo_contatto|ora }}</td>
+      <td>
+        <form class="inline" method="post" action="/varchi/{{ v.id }}/apri">
+          <input type="hidden" name="redirect_to" value="/varchi">
+          <button type="submit" {% if not v.attivo %}disabled title="{{ t('Varco disattivato: riattivalo per poterlo aprire') }}"{% endif %}>{{ t("Apri") }}</button>
+        </form>
+      </td>
+      <td style="text-align:right"><span class="riga-apri">&rsaquo;</span></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6">{{ vuoto(t('Ancora nessun varco'), t('Un varco è una porta con il suo lettore e il suo dispositivo. Un amministratore lo crea e abbina il dispositivo: poi comparirà qui online.'), t('Crea il primo varco') if user and user.is_admin else None, pannello=True) }}</td></tr>
+    {% endfor %}
+  </table>
+</div>
