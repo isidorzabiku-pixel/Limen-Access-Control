@@ -2,6 +2,8 @@
 
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE) ![Status: early](https://img.shields.io/badge/status-early%20stage-orange) ![Docker](https://img.shields.io/badge/docker-ready-2496ED)
 
+🇮🇹 [Leggi in italiano](README.it.md)
+
 **Open-source access control, built to make enterprise-grade door management easy, fast and accessible.**
 
 Limen is a lightweight, self-hosted access control system. A web app (the *master*) manages people, credentials,
