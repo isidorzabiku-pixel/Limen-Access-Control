@@ -1,5 +1,7 @@
 # Limen
 
+[![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE) ![Status: early](https://img.shields.io/badge/status-early%20stage-orange) ![Docker](https://img.shields.io/badge/docker-ready-2496ED)
+
 **Open-source access control, built to make enterprise-grade door management easy, fast and accessible.**
 
 Limen is a lightweight, self-hosted access control system. A web app (the *master*) manages people, credentials,
@@ -11,6 +13,13 @@ on any machine you already have.
 > daily use and covered by an automated test suite run during development. The ESP32 firmware logic is tested against the
 > real master on a PC; **testing on real boards is still in progress**. Evaluate it on a bench before trusting it with a real
 > door, and never rely on it as your only means of emergency egress.
+
+## Screenshots
+
+| | |
+|---|---|
+| ![Dashboard](docs/img/screenshot-dashboard.jpg) | ![Live monitoring](docs/img/screenshot-monitoraggio.jpg) |
+| ![Gate panel](docs/img/screenshot-varco.jpg) | ![Person: groups and rules](docs/img/screenshot-persona.jpg) |
 
 ## Highlights
 

@@ -3,7 +3,7 @@
 ## Git
 - Source on GitHub; `dev` is the development branch, `main` is stable.
 - Work and push on `dev`: `git fetch -q origin dev && git rebase origin/dev && git push -q origin dev` (with local changes that cannot be published: `git stash` / `git pull --rebase` / `git stash pop`).
-- Code, comments and commit messages are in Italian .
+- Code, comments and commit messages are in Italian.
 - To commit only part of a mixed file, use a temporary worktree on `origin/dev`, copy the clean files and apply the edit with a string replacement.
 
 ## Starting the master
