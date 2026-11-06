@@ -27,7 +27,7 @@ holidays, gate mode (normal / scheduled unlock / maintenance / emergency), opera
 outputs, inputs), time-window profiles (indexed, deduplicated) and the **badges**: `{"c": code, "s":1 | "f": windows, "d": from, "e": to, "x": block}`.
 - A badge enters the cache only if it has an active rule on that gate; for the slave, a badge without permissions is "unknown".
 - The master reconstructs the **real reason** for a denial (`services/motivi.py`) using the full configuration.
-- Sending: every 6 h, on "Send data", after saves that require it, and (block-mode anti-passback) after every granted passage of a person with anti-passback, on reset, and on settings changes (`aggiorna_cache_ap`). Every cache is acknowledged with `CA`.
+- Sending: every 6 h, on "Send data", after saves that require it, right after a credential is deactivated or deleted (revocation), and (block-mode anti-passback) after every granted passage of a person with anti-passback, on reset, and on settings changes (`aggiorna_cache_ap`). Every cache is acknowledged with `CA`.
 
 ## Permissions
 Person → (groups → rules) and/or direct rules. **Access rule** (`Policy` model) = one or more gates + one time window (applies to all). A rule without a time window is "incomplete" and grants nothing.

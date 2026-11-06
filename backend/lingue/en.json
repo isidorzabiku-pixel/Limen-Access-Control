@@ -1395,5 +1395,9 @@
  "Accessi%(x)s": "Access%(x)s",
  "Manuale d'uso": "User manual",
  "Come usare Limen, per operatori e amministratori.": "How to use Limen, for operators and administrators.",
- "Scarica il manuale (PDF)": "Download the manual (PDF)"
+ "Scarica il manuale (PDF)": "Download the manual (PDF)",
+ "Eliminare il titolo di accesso?": "Delete the credential?",
+ "Elimina titolo": "Delete credential",
+ "Credenziale %(nome_cred)s eliminata da %(chi)s": "Credential %(nome_cred)s deleted from %(chi)s",
+ "Stai per eliminare questo titolo di accesso (%(p1)s). Smetterà subito di aprire i varchi. L'operazione non è reversibile.": "You are about to delete this credential (%(p1)s). It will stop opening gates right away. This cannot be undone."
 }

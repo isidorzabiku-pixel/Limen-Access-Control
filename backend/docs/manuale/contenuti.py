@@ -38,7 +38,7 @@ def sez_en(ui, im):
 <ol>
 <li><b>Gates</b> (administrator). {ui("Gates")} → {ui("New gate")}: name, gate no. and the IP address of its device → {ui("Create gate")}. When the device connects it appears in {ui("To do")}: press {ui("Pair")}. The gate turns <i>online</i>.</li>
 <li><b>Time windows.</b> {ui("Time windows")} → {ui("New time window")}: give it a name, then choose days and hours. {ui("Holidays →")} lists the days that windows set to exclude holidays skip.</li>
-<li><b>People.</b> {ui("People")} → {ui("New person")} → {ui("Add")}, or {ui("Import from CSV")}. Press {ui("Properties ›")} on a person to see three tabs: {ui("Access")} (groups and direct rules), {ui("Access credentials")} (badges, PIN) and {ui("Presence")}. For guests use {ui("Visitors")}: they have an end date and lose access after it.</li>
+<li><b>People.</b> {ui("People")} → {ui("New person")} → {ui("Add")}, or {ui("Import from CSV")}. Press {ui("Properties ›")} on a person to see three tabs: {ui("Access")} (groups and direct rules), {ui("Access credentials")} (badges, PIN) and {ui("Presence")}. For guests use {ui("Visitors")}: they have an end date and lose access after it. In {ui("Access credentials")}, {ui("Deactivate")} and {ui("Delete")} take effect at once: the data goes to the gates automatically.</li>
 <li><b>Groups and rules.</b> {ui("Groups")} → {ui("New group")} to gather people. {ui("Access rules")} → {ui("New rule")}: choose one or more gates and a time window (or {ui("Always (24 hours a day)")}). Then add the rule to a group or to a person.</li>
 <li><b>Send data.</b> Press {ui("Send data to devices")}. Changes reach the doors only after this.</li>
 </ol>
@@ -46,7 +46,7 @@ def sez_en(ui, im):
 <div class="note"><b>Unknown badge?</b> A badge read at a gate but not assigned appears in People, under {ui("Credentials read but not recognised")}: press {ui("Assign to…")} and choose the person, or {ui("Ignore")}.</div>
 <div class="note"><b>Check before you trust it.</b> {ui("See effective permissions")} in a person's properties shows what that person can really do. A rule with no gate or no time window is marked <i>incomplete</i> and grants nothing.</div>
 {im("policy", "Access rules: gates, time window and status.")}
-<div class="note warn"><b>Do not forget step 5.</b> After any change to people, rules, time windows or gates, press {ui("Send data to devices")}. Gates also receive data automatically every 6 hours, but do not wait for it.</div>"""),
+<div class="note warn"><b>Do not forget step 5.</b> After any change to people, rules, time windows or gates, press {ui("Send data to devices")}. Gates also receive data automatically every 6 hours, but do not wait for it. The exception is deactivating or deleting a credential, which is sent at once.</div>"""),
         ("Controlling a gate", f"""
 {im("varco", "A gate's panel: open now, operation, status and latest passages.")}
 <p>Click a gate in {ui("Gates")} to open its panel, with three tabs.</p>
@@ -130,7 +130,7 @@ def sez_it(ui, im):
 <ol>
 <li><b>Varchi</b> (amministratore). {ui("Varchi")} → {ui("Nuovo varco")}: nome, n. varco e indirizzo IP del suo dispositivo → {ui("Crea varco")}. Quando il dispositivo si collega compare in {ui("Da fare")}: premi {ui("Abbina")}. Il varco diventa <i>online</i>.</li>
 <li><b>Fasce orarie.</b> {ui("Fasce orarie")} → {ui("Nuova fascia")}: dalle un nome, poi scegli giorni e orari. {ui("Festività →")} elenca i giorni che le fasce impostate per escludere i festivi saltano.</li>
-<li><b>Persone.</b> {ui("Persone")} → {ui("Nuova persona")} → {ui("Aggiungi")}, oppure {ui("Importa da CSV")}. Premi {ui("Proprietà ›")} su una persona per vedere tre schede: {ui("Accessi")} (gruppi e regole dirette), {ui("Titoli di accesso")} (badge, PIN) e {ui("Presenza")}. Per gli ospiti usa {ui("Visitatori")}: hanno una data di fine e dopo perdono l'accesso.</li>
+<li><b>Persone.</b> {ui("Persone")} → {ui("Nuova persona")} → {ui("Aggiungi")}, oppure {ui("Importa da CSV")}. Premi {ui("Proprietà ›")} su una persona per vedere tre schede: {ui("Accessi")} (gruppi e regole dirette), {ui("Titoli di accesso")} (badge, PIN) e {ui("Presenza")}. Per gli ospiti usa {ui("Visitatori")}: hanno una data di fine e dopo perdono l'accesso. In {ui("Titoli di accesso")}, {ui("Disattiva")} ed {ui("Elimina")} hanno effetto subito: i dati vanno ai varchi in automatico.</li>
 <li><b>Gruppi e regole.</b> {ui("Gruppi")} → {ui("Nuovo gruppo")} per raccogliere le persone. {ui("Regole di accesso")} → {ui("Nuova regola")}: scegli uno o più varchi e una fascia oraria (oppure {ui("Sempre (24 ore su 24)")}). Poi aggiungi la regola a un gruppo o a una persona.</li>
 <li><b>Invia i dati.</b> Premi {ui("Scarica dati ai dispositivi")}. Le modifiche arrivano alle porte solo dopo questo passaggio.</li>
 </ol>
@@ -138,7 +138,7 @@ def sez_it(ui, im):
 <div class="note"><b>Badge sconosciuto?</b> Un badge letto a un varco ma non assegnato compare in Persone, sotto {ui("Credenziali lette e non riconosciute")}: premi {ui("Assegna a…")} e scegli la persona, oppure {ui("Ignora")}.</div>
 <div class="note"><b>Controlla prima di fidarti.</b> {ui("Vedi permessi effettivi")} nelle proprietà di una persona mostra cosa può fare davvero. Una regola senza varco o senza fascia oraria è segnata come <i>incompleta</i> e non concede nulla.</div>
 {im("policy", "Regole di accesso: varchi, fascia oraria e stato.")}
-<div class="note warn"><b>Non dimenticare il passo 5.</b> Dopo ogni modifica a persone, regole, fasce orarie o varchi, premi {ui("Scarica dati ai dispositivi")}. I varchi ricevono i dati anche in automatico ogni 6 ore, ma non aspettare.</div>"""),
+<div class="note warn"><b>Non dimenticare il passo 5.</b> Dopo ogni modifica a persone, regole, fasce orarie o varchi, premi {ui("Scarica dati ai dispositivi")}. I varchi ricevono i dati anche in automatico ogni 6 ore, ma non aspettare. Fa eccezione la disattivazione o l'eliminazione di un titolo di accesso, che parte subito.</div>"""),
         ("Gestire un varco", f"""
 {im("varco", "Il pannello di un varco: apri ora, funzionamento, stato e ultimi passaggi.")}
 <p>Clicca un varco in {ui("Varchi")} per aprire il suo pannello, con tre schede.</p>

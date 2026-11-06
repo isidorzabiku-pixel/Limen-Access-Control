@@ -7,6 +7,7 @@ Server-rendered con Jinja2 + htmx: niente build step, leggero anche su hardware 
 """
 import ipaddress
 import json
+import logging
 import os
 import secrets
 import threading
@@ -39,6 +40,7 @@ from routers.badge import credenziali_sconosciute_recenti
 from routers.modalita import valida_modalita, _applica as _applica_modalita
 from services.lingua import pigro, t
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Un dispositivo che non manda heartbeat da più di questo tempo è "offline"
@@ -727,6 +729,15 @@ def aggiungi_media(
     return RedirectResponse(f"{_base_persona(db, persona_id)}?apri={persona_id}&scheda=titoli", status_code=303)
 
 
+def _manda_cache_dopo_revoca(db: Session) -> None:
+    """Disattivare o eliminare un titolo toglie un accesso: ai varchi deve arrivare subito, senza aspettare
+    «Scarica dati» ne' le 6 ore. Un errore non blocca l'azione (resta il «Scarica dati» a mano)."""
+    try:
+        udp_agent.invia_cache(db)
+    except Exception:
+        logger.exception("Cache non inviata dopo la revoca di un titolo di accesso")
+
+
 @router.post("/media/{media_id}/toggle")
 def toggle_media(request: Request, media_id: int, db: Session = Depends(get_db)):
     require_login(request, db)
@@ -737,6 +748,26 @@ def toggle_media(request: Request, media_id: int, db: Session = Depends(get_db))
         db.commit()
         stato = "attivata" if m.attivo else "disattivata"
         registra_log(db, t("Credenziale '%(codice)s' %(stato)s", codice=m.codice, stato=stato), categoria="persone")
+        if not m.attivo:
+            _manda_cache_dopo_revoca(db)
+    return RedirectResponse(f"{_base_persona(db, persona_id)}?apri={persona_id}&scheda=titoli" if persona_id else "/persone", status_code=303)
+
+
+@router.post("/media/{media_id}/elimina")
+def elimina_media(request: Request, media_id: int, db: Session = Depends(get_db)):
+    """Toglie del tutto un titolo di accesso dalla persona. I passaggi gia' registrati non si toccano
+    (conservano il codice come testo). La cache va subito ai varchi (come per Disattiva)."""
+    require_login(request, db)
+    m = db.query(AccessMedia).filter(AccessMedia.id == media_id).first()
+    persona_id = m.persona_id if m else None
+    if m:
+        persona = db.query(Persona).filter(Persona.id == persona_id).first()
+        chi = f"{persona.nome} {persona.cognome}" if persona else persona_id
+        etichetta = "PIN" if m.tipo == TipoMedia.pin else f"{cred_service.ETICHETTE[m.tipo.value]} '{m.codice}'"
+        db.delete(m)
+        db.commit()
+        registra_log(db, t("Credenziale %(nome_cred)s eliminata da %(chi)s", nome_cred=etichetta, chi=chi), categoria="persone")
+        _manda_cache_dopo_revoca(db)
     return RedirectResponse(f"{_base_persona(db, persona_id)}?apri={persona_id}&scheda=titoli" if persona_id else "/persone", status_code=303)
 
 
@@ -1222,7 +1253,7 @@ def scarica_dati_varchi(request: Request, redirect_to: str = Form("/varchi"), db
     aspetta fino a 2s la conferma di consegna reale (pacchetto CA mandato
     dallo slave dopo aver elaborato la cache) prima di rispondere — un
     "inviato" da solo non dice se qualcuno l'ha davvero ricevuto, qui invece
-    sì. Nessun invio automatico ad ogni salvataggio: solo qui, su richiesta
+    sì. Nessun invio automatico ad ogni salvataggio (salvo la revoca di un titolo): solo qui, su richiesta
     esplicita dell'admin (puo' cambiare idea piu' volte prima di essere
     pronto a distribuire le modifiche).
     """

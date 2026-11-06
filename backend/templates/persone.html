@@ -441,6 +441,12 @@
           <form action="/media/{{ m.id }}/toggle" method="post" class="inline">
             <button type="submit" class="ghost">{{ t('Disattiva') if m.attivo else t('Attiva') }}</button>
           </form>
+          <form action="/media/{{ m.id }}/elimina" method="post" class="inline">
+            <button type="submit" class="danger"
+                    data-conferma="{{ t('Stai per eliminare questo titolo di accesso (%(p1)s). Smetterà subito di aprire i varchi. L\'operazione non è reversibile.', p1=(dict(tipi_cred).get(m.tipo.value, m.tipo.value) if m.tipo.value == 'pin' else m.codice)) }}"
+                    data-conferma-titolo="{{ t('Eliminare il titolo di accesso?') }}"
+                    data-conferma-azione="{{ t('Elimina titolo') }}">{{ t("Elimina") }}</button>
+          </form>
         </td>
       </tr>
       <tr>

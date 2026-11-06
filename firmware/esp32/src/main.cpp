@@ -18,11 +18,13 @@
 #include <WebServer.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
+#include <driver/gpio.h>
 #include <esp_system.h>
 #include <esp_timer.h>
 #include <deque>
 #include "pagine.h"
 #include "slave.h"
+#include "ble_test.h"
 
 using namespace gk;
 
@@ -40,6 +42,14 @@ struct Config {
 
 static Preferences prefs;
 static Config cfg;
+
+// Lettore su UART (banco di prova: Flipper Zero o qualunque cosa mandi righe di testo). Pin fissi, riservati.
+constexpr int UART_BADGE_RX = 16, UART_BADGE_TX = 17;
+constexpr uint32_t UART_BADGE_BAUD = 115200;
+constexpr int UART_BADGE_LETTORE = 0;                    // indice del lettore nel «Funzionamento» del varco
+#ifndef LIMEN_BLE_LETTORE
+#define LIMEN_BLE_LETTORE 0                              // lettore a cui va il codice ricevuto via BLE (solo con LIMEN_BLE_TEST)
+#endif
 
 static void caricaConfig() {
   prefs.begin("gk", false);                              // lettura/scrittura: crea il contenitore al primo avvio
@@ -190,17 +200,23 @@ static void apiLog() {
   rispondiJson(d);
 }
 
+// Stesse regole per la console di prova e per la UART.
+static bool codiceValido(const String& c) {
+  bool valido = c.length() > 0 && c.length() < size_t(LUNGHEZZA_CODICE);
+  for (size_t i = 0; valido && i < c.length(); i++) {
+    char x = c[i];
+    valido = isalnum(x) || x == '-' || x == '_' || x == '.';
+  }
+  return valido;
+}
+
 static void apiBadge() {
   if (!autorizzato()) return;
   String c = server.arg("codice");
   c.trim();
   int lettore = server.arg("lettore").toInt();
   JsonDocument d;
-  bool valido = c.length() > 0 && c.length() < size_t(LUNGHEZZA_CODICE);
-  for (size_t i = 0; valido && i < c.length(); i++) {
-    char x = c[i];
-    valido = isalnum(x) || x == '-' || x == '_' || x == '.';
-  }
+  bool valido = codiceValido(c);
   if (!valido || !slave) { d["esito"] = "invalid code (letters, digits, - _ . only, 23 characters at most)"; d["concesso"] = false; rispondiJson(d, 400); return; }
   EsitoBadge e = slave->badge(c.c_str(), lettore);
   d["ignorato"] = e.ignorato; d["concesso"] = e.concesso; d["esito"] = e.esito;
@@ -280,8 +296,9 @@ static String validaConfig(const Config& n, bool passwordAdminObbligatoria) {
   if (n.adminPass.length() == 0 && passwordAdminObbligatoria) return "Set an admin password.";
   if (n.adminPass.length() > 0 && n.adminPass.length() < 4) return "The admin password must be at least 4 characters long.";
   for (int i = 0; i < 2; i++) if (!pinValido(n.relePin[i]) || !pinValido(n.ingressoPin[i]) || !pinValido(n.ledPin[i])) return "Unusable pin (avoid 19, 20 and 26-37).";
-  int usati[8] = {n.relePin[0], n.relePin[1], n.ingressoPin[0], n.ingressoPin[1], n.ledPin[0], n.ledPin[1], -1, -1};
-  for (int i = 0; i < 6; i++) for (int j = i + 1; j < 6; j++) if (usati[i] >= 0 && usati[i] == usati[j]) return "The same pin is used twice.";
+  int usati[8] = {n.relePin[0], n.relePin[1], n.ingressoPin[0], n.ingressoPin[1], n.ledPin[0], n.ledPin[1], UART_BADGE_RX, UART_BADGE_TX};
+  for (int i = 0; i < 6; i++) for (int j = i + 1; j < 8; j++) if (usati[i] >= 0 && usati[i] == usati[j])
+    return j >= 6 ? "Pins 16 and 17 are reserved for the UART reader." : "The same pin is used twice.";
   return "";
 }
 
@@ -461,6 +478,56 @@ static void sorvegliaWifi() {
   }
 }
 
+// ---------------------------------------------------------------- lettore su UART
+// Righe di testo terminate da \n (\r ignorato): «codice» oppure «TIPO:codice» (es. «EM4100:0A1B2C3D4E»), il prefisso
+// si scarta. Il codice passa a Slave::badge come quello della console. Risposta sulla stessa UART, una riga:
+// «OK <esito>», «NO <esito>», «IGNORED» (lettore non usato nel Funzionamento) oppure «ERR <motivo>».
+static String rigaUart;
+static bool rigaUartLunga = false;
+static bool rigaUartRumore = false;
+
+static void leggiUartBadge() {
+  while (Serial1.available()) {
+    char x = char(Serial1.read());
+    if (x == '\r') continue;
+    if (x != '\n') {
+      if (x < 0x20 || x > 0x7E) { rigaUart = ""; rigaUartRumore = true; continue; }   // disturbo sulla linea
+      if (rigaUart.length() < 64) rigaUart += x; else rigaUartLunga = true;
+      continue;
+    }
+    if (rigaUartRumore) { rigaUart = ""; rigaUartLunga = false; rigaUartRumore = false; continue; }   // nessuna risposta al rumore
+    String c = rigaUart;
+    bool lunga = rigaUartLunga;
+    rigaUart = ""; rigaUartLunga = false;
+    c.trim();
+    int dp = c.lastIndexOf(':');
+    if (dp >= 0) c = c.substring(dp + 1);
+    if (c.length() == 0 && !lunga) continue;
+    if (lunga || !codiceValido(c)) { Serial.println("[uart] invalid line ignored"); Serial1.println("ERR invalid code"); continue; }
+    if (!slave) { Serial1.println("ERR not configured"); continue; }
+    EsitoBadge e = slave->badge(c.c_str(), UART_BADGE_LETTORE);
+    String esito = e.esito.c_str();
+    Serial.println("[uart] " + c + " -> " + (e.ignorato ? String("ignored") : esito));
+    Serial1.println(e.ignorato ? String("IGNORED") : String(String(e.concesso ? "OK " : "NO ") + esito));
+  }
+}
+
+#ifdef LIMEN_BLE_TEST
+// Codice ricevuto via BLE (prova da banco): stesse regole della UART. Torna la riga di risposta.
+static String trattaCodiceBle(const String& grezzo) {
+  String c = grezzo;
+  c.trim();
+  int dp = c.lastIndexOf(':');
+  if (dp >= 0) c = c.substring(dp + 1);
+  if (!codiceValido(c)) { Serial.println("[ble] invalid code ignored"); return "ERR invalid code"; }
+  if (!slave) return "ERR not configured";
+  EsitoBadge e = slave->badge(c.c_str(), LIMEN_BLE_LETTORE);
+  String esito = e.esito.c_str();
+  Serial.println("[ble] " + c + " -> " + (e.ignorato ? String("ignored") : esito));
+  return e.ignorato ? String("IGNORED") : String(String(e.concesso ? "OK " : "NO ") + esito);
+}
+#endif
+
 // ---------------------------------------------------------------- setup / loop
 
 static uint32_t bootPremutoDal = 0;
@@ -471,6 +538,9 @@ void setup() {
   Serial.println("\nLimen slave (ESP32)");
   pinMode(0, INPUT_PULLUP);                               // tasto BOOT: 5 s = impostazioni di fabbrica
   if (!LittleFS.begin(true)) Serial.println("LittleFS not available");
+  Serial1.begin(UART_BADGE_BAUD, SERIAL_8N1, UART_BADGE_RX, UART_BADGE_TX);
+  gpio_pullup_en(gpio_num_t(UART_BADGE_RX));             // RX scollegato = linea a riposo, non rumore
+  Serial.println("UART reader: RX GPIO" + String(UART_BADGE_RX) + ", TX GPIO" + String(UART_BADGE_TX) + ", " + String(UART_BADGE_BAUD) + " baud");
   caricaConfig();
   importaConfigTxt();
 
@@ -493,6 +563,9 @@ void setup() {
   } else {
     avviaReteConfigurazione();
   }
+#ifdef LIMEN_BLE_TEST
+  bleAvvia();
+#endif
   avviaWeb();
 }
 
@@ -508,6 +581,10 @@ void loop() {
       if (n > int(sizeof(buf))) hal.udp.flush();            // pacchetto piu' grande del previsto: il resto si scarta
       if (letti > 0) slave->onDatagram(buf, size_t(letti), std::string(hal.udp.remoteIP().toString().c_str()));
     }
+    leggiUartBadge();
+#ifdef LIMEN_BLE_TEST
+    bleLoop(trattaCodiceBle);
+#endif
     slave->loop();
   }
 

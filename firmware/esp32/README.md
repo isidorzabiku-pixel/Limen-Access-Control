@@ -65,6 +65,31 @@ What each output and input does (opens, siren, arming, door sensor, button, "Oth
 3, 45, 46 (used at boot). Relays must be driven through a suitable module (transistor/optocoupler), not directly from
 the pin.
 
+## UART reader (bench)
+
+Besides the web test console, the device accepts badge codes as text lines on a serial port: **RX = GPIO16,
+TX = GPIO17, 115200 8N1** (fixed, reserved: the setup page refuses them for other functions). A line is `code` or
+`TYPE:code` (the prefix is dropped), ending with `\n`. The code goes to reader 0 with the same rules as the console
+and the device answers one line: `OK <outcome>`, `NO <outcome>`, `IGNORED` (reader 0 not used in the gate's
+*Operation*) or `ERR <reason>`. Everything else works as usual.
+
+A Flipper Zero app that reads 125 kHz tags and sends them here is in `firmware/flipper/limen_uart_reader/`. Wiring:
+Flipper pin 13 (TX) → GPIO16, pin 14 (RX) → GPIO17, GND → GND (3.3 V on both sides, no level shifter). Register the
+badge on the master with the hex code shown on the Flipper (e.g. `0A1B2C3D4E`): codes are case-sensitive.
+
+## BLE reader (bench test, separate build)
+
+A **test-only** build adds a BLE reader to the same firmware: `pio run -e esp32s3_ble -t upload` (the normal `pio run`
+does not include it). The device advertises as `Limen-BLE-XXXX`. With a generic phone app (nRF Connect, LightBlue):
+connect, find the service `2fd7f8e4-0c6a-4a82-8100-50d9c598ca5e`, write a code (as text, same rules and `TYPE:code`
+prefix as the UART reader) to the characteristic `d112ee41-dffe-4656-9c99-1bb61f1c2130`, and read the answer
+(`OK <outcome>`, `NO <outcome>`, `IGNORED`, `ERR <reason>`; also sent as a notification) from
+`edbda37c-4492-4096-ae7c-2b0241ff83cf`. The code goes to reader 0 (build flag `LIMEN_BLE_LETTORE` to change it) with
+the same rules as the console. The serial monitor shows `[ble]` lines.
+
+**No authentication**: anyone in range can write a code. It is a bench tool, never for a real door. A real BLE
+credential needs a challenge-response with a per-user key. Not yet tried on a board.
+
 With nothing wired an input reads "high": from the page you can **force the level** of each input to test the door
 sensor and the button (for an NC contact, pin high = contact open = door open).
 

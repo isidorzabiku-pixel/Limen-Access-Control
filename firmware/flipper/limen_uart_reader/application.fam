@@ -1,0 +1,10 @@
+App(
+    appid="limen_uart_reader",
+    name="Limen UART reader",
+    apptype=FlipperAppType.EXTERNAL,
+    entry_point="limen_uart_reader_app",
+    requires=["gui"],
+    stack_size=2 * 1024,
+    fap_category="GPIO",
+    fap_description="Reads 125 kHz tags and sends the code to a Limen ESP32 over UART",
+)
