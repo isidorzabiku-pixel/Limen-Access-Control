@@ -21,7 +21,7 @@ pagina Varchi; non esiste nessun broadcast.
   cache (master -> UN slave, unicast)
     Un pacchetto JSON per varco con l'elenco badge+fasce orarie autorizzati
     su quel varco, firmato con l'api_key di quel varco, all'IP del varco. Mandato
-    ogni INTERVALLO_CACHE_SEC e a richiesta (bottone "Scarica dati" sulla webapp).
+    ogni INTERVALLO_CACHE_SEC e a richiesta (bottone "Invia dati" sulla webapp).
     Un varco senza IP non la riceve.
 
   apri (master -> UN slave, unicast)
@@ -37,7 +37,7 @@ pagina Varchi; non esiste nessun broadcast.
     verificato ed elaborato con successo un pacchetto cache, riportando la
     stessa "versione" ricevuta. Il master la confronta con l'ultima versione
     mandata a quel varco per sapere se è stata davvero recapitata (il bottone
-    "Scarica dati" aspetta fino a 2s questa conferma prima di rispondere).
+    "Invia dati" aspetta fino a 2s questa conferma prima di rispondere).
 
   Gli eventi (EV: passaggio badge) arrivano con un numero progressivo e l'ora
   in cui sono avvenuti ("EV|varco|ts|codice|esito|seq|ts_evento"). Il master li
@@ -87,7 +87,7 @@ from database import SessionLocal
 from models import Varco, Persona, AccessMedia, Policy, EsitoEvento, Evento, LogSistema
 from services.policy_engine import aggiorna_posizione_anti_passback, blocco_ingresso_fino, violazione_anti_passback
 from services.logger import registra_log
-from services import funzionamento, presenza, tempo, festivita, connessioni, motivi
+from services import funzionamento, presenza, tempo, festivita, connessioni, motivi, ble_inviti, ble_abbinamento
 from services.lingua import t
 
 logger = logging.getLogger("udp_agent")
@@ -239,6 +239,43 @@ def invia_apri(varco: Varco) -> bool:
         logger.warning(f"Invio UDP 'apri' a {varco.ip_address} fallito: {e}")
         connessioni.anomalia(("invio", "apri", varco.id), t("Invio del comando di apertura a %(ip_address)s fallito: %(e)s", ip_address=varco.ip_address, e=e), varco.id, "error", "rete")
         return False
+
+
+def _invia_firmato(varco: Varco, tipo: str, *campi) -> bool:
+    """Pacchetto firmato in unicast all'IP del varco (BP, AR)."""
+    if not varco.ip_address:
+        return False
+    corpo = _impacchetta_piccolo([tipo, varco.id, int(time.time()), *campi])
+    pacchetto = corpo + b"|" + _firma(corpo, varco.api_key).encode()
+    try:
+        _socket_invio().sendto(pacchetto, (varco.ip_address, PORTA_SLAVE))
+        connessioni.traccia(f"TX {tipo} a {varco.ip_address} per '{varco.nome}'", varco.id, "PKT_TX", {"tipo": tipo, "ip": varco.ip_address})
+        return True
+    except OSError as e:
+        logger.warning(f"Invio UDP '{tipo}' a {varco.ip_address} fallito: {e}")
+        connessioni.anomalia(("invio", tipo, varco.id), t("Invio del pacchetto %(tipo)s a %(ip_address)s fallito: %(e)s", tipo=tipo, ip_address=varco.ip_address, e=e), varco.id, "error", "rete")
+        return False
+
+
+def apri_finestra_abbinamento(varco: Varco, secondi: int, kid: str, chiave: bytes) -> bool:
+    """BP: per `secondi` lo slave accetta l'abbinamento di un telefono che prova di avere l'invito.
+    La chiave derivata dall'invito viaggia cifrata con la chiave del varco (vedi ble_abbinamento.cifra_per_varco)."""
+    if not varco.ip_address:
+        return False
+    ts = int(time.time())
+    corpo = _impacchetta_piccolo(["BP", varco.id, ts, secondi, kid, ble_abbinamento.cifra_per_varco(chiave, varco.api_key, varco.id, ts)])
+    pacchetto = corpo + b"|" + _firma(corpo, varco.api_key).encode()
+    try:
+        _socket_invio().sendto(pacchetto, (varco.ip_address, PORTA_SLAVE))
+        connessioni.traccia(f"TX BP a {varco.ip_address} per '{varco.nome}'", varco.id, "PKT_TX", {"tipo": "BP", "ip": varco.ip_address})
+        return True
+    except OSError as e:
+        logger.warning(f"Invio UDP 'BP' a {varco.ip_address} fallito: {e}")
+        return False
+
+
+def chiudi_finestra_abbinamento(varco: Varco) -> bool:
+    return _invia_firmato(varco, "BP", 0)
 
 
 def invia_comando_uscita(varco: Varco, indice: int, azione: str) -> bool:
@@ -492,6 +529,11 @@ def invia_cache(db, solo_varco_id: Optional[int] = None) -> dict[int, int]:
     varchi = query.all()
     sock = _socket_invio()
     mandati: dict[int, int] = {}
+    try:
+        chiave_tel = ble_inviti.chiave_telefoni(db)      # nasce da sola al primo invio
+    except Exception:
+        logger.exception("Chiave dei telefoni non disponibile: cache inviata senza")
+        chiave_tel = None
     for varco in varchi:
         if not varco.ip_address:
             connessioni.anomalia(("cache-senza-ip", varco.id), t("Cache per '%(nome)s' non inviata: il varco non ha un indirizzo IP (scrivilo nella pagina Varchi).", nome=varco.nome), varco.id, "warning", "dispositivi", db)
@@ -506,7 +548,8 @@ def invia_cache(db, solo_varco_id: Optional[int] = None) -> dict[int, int]:
         # comunque negato in entrambi i casi (i slave sono solo UDP: questo
         # campo è l'unico modo per dirglielo).
         autorizzazioni = _costruisci_autorizzazioni_varco(db, varco) if varco.attivo else []
-        versione = int(time.time() * 1000)
+        # Cresce sempre, anche se l'orologio del master torna indietro: lo slave rifiuta le versioni non piu' nuove.
+        versione = max(int(time.time() * 1000), (varco.ultima_cache_versione or 0) + 1)
         meta = {
             "tipo": "cache",
             "varco_id": varco.id,
@@ -525,6 +568,9 @@ def invia_cache(db, solo_varco_id: Optional[int] = None) -> dict[int, int]:
             # righe di "sblocco"), "m" manutenzione, "e" emergenza (porta libera).
             "modo": SIGLE_MODALITA.get(varco.modalita, "n"),
         }
+        # Chiave dei telefoni (BLE), cifrata con la chiave del varco: solo se l'impianto ha telefoni o inviti.
+        if chiave_tel is not None:
+            meta["kt"] = ble_abbinamento.cifra_chiave_telefoni(chiave_tel, varco.api_key, varco.id, versione)
         if varco.modalita == "sblocco" and varco.sblocco_fascia:
             meta["sblocco"] = _righe_fascia(varco.sblocco_fascia)
         # Funzionamento: solo se e' stato impostato (altrimenti lo slave fa come prima).
@@ -554,6 +600,53 @@ def invia_cache(db, solo_varco_id: Optional[int] = None) -> dict[int, int]:
     return mandati
 
 
+# ---------- Invii che devono arrivare (revoca di un titolo, telefono appena abbinato) ----------
+RIPETI_OGNI_SEC = 20
+RIPETI_MAX = 15                     # 5 minuti; poi resta l'avviso "cache non confermata" e l'invio periodico
+_da_confermare: dict[int, int] = {}   # varco_id -> tentativi rimasti
+_lock_ripeti = threading.Lock()
+
+
+def invia_cache_finche_confermata(db) -> dict[int, int]:
+    """Manda la cache a tutti e la ripete ai varchi online che non la confermano (un pacchetto UDP puo' perdersi)."""
+    mandati = invia_cache(db)
+    with _lock_ripeti:
+        for varco_id in mandati:
+            _da_confermare[varco_id] = RIPETI_MAX
+    return mandati
+
+
+def _ripeti_cache_non_confermate() -> None:
+    with _lock_ripeti:
+        in_attesa = list(_da_confermare.items())
+    if not in_attesa:
+        return
+    db = SessionLocal()
+    try:
+        for varco_id, rimasti in in_attesa:
+            v = db.get(Varco, varco_id)
+            fatto = v is None or not v.ultima_cache_versione or v.ultima_cache_confermata == v.ultima_cache_versione
+            if fatto or rimasti <= 0:
+                with _lock_ripeti:
+                    _da_confermare.pop(varco_id, None)
+                continue
+            with _lock_ripeti:
+                _da_confermare[varco_id] = rimasti - 1
+            contatto = presenza.ultimo_contatto(varco_id)
+            if contatto is not None and (datetime.utcnow() - contatto).total_seconds() < 30:   # offline: la chiedera' lui al ritorno
+                invia_cache(db, solo_varco_id=varco_id)
+    finally:
+        db.close()
+
+
+def _loop_ripeti_cache():
+    while not _stop.wait(RIPETI_OGNI_SEC):
+        try:
+            _ripeti_cache_non_confermate()
+        except Exception:
+            logger.exception("Errore nella ripetizione della cache non confermata")
+
+
 def attendi_conferme_cache(mandati: dict[int, int], timeout_sec: float = 2.0) -> dict[int, bool]:
     """
     Aspetta fino a timeout_sec che per ogni varco in `mandati` arrivi (sul
@@ -565,7 +658,7 @@ def attendi_conferme_cache(mandati: dict[int, int], timeout_sec: float = 2.0) ->
 
     Un varco spento/offline resta semplicemente False allo scadere del
     timeout: non è un errore, è l'informazione che il chiamante deve
-    mostrare (bottone "Scarica dati" sulla webapp).
+    mostrare (bottone "Invia dati" sulla webapp).
     """
     scadenza = time.time() + timeout_sec
     confermati = {varco_id: False for varco_id in mandati}
@@ -731,10 +824,12 @@ def _gestisci_sensore_porta(db, varco: Varco, campi: list) -> Optional[int]:
 
 
 def _gestisci_stato_heartbeat(varco: Varco, campi: list, ts: int) -> None:
-    """HB: [correzione, coda, porta, uscite]. Il battito porta lo stato attuale del dispositivo
+    """HB: [correzione, coda, porta, uscite, versione firmware]. Il battito porta lo stato attuale del dispositivo
     ("a"/"c" per la porta, un carattere per uscita 1/0/-, "-" se non applicabile): riallinea quello
     mostrato se un evento si e' perso o se il master e' ripartito. Conta solo cio' che il master ha
     configurato; un battito di uno slave vecchio (senza questi campi) non cambia nulla."""
+    if len(campi) > 4 and campi[4]:
+        presenza.segna_firmware(varco.id, campi[4][:20])
     porta = campi[2] if len(campi) > 2 else "-"
     if porta in ("a", "c") and funzionamento.sensore_porta_attivo(varco):
         nuovo = "aperta" if porta == "a" else "chiusa"
@@ -904,7 +999,7 @@ def _elabora_pacchetto(dato: bytes, mittente_ip: str) -> None:
             _gestisci_richiesta_abbinamento(varco_id, parti[3], mittente_ip)
         return
 
-    if tipo not in ("HB", "EA", "EV", "SP", "CA", "RC", "IN", "SU"):
+    if tipo not in ("HB", "EA", "EV", "SP", "CA", "RC", "IN", "SU", "AB"):
         return  # "cache"/"AP" sono mandati dal master, non li aspettiamo in ricezione
 
     canonico = "|".join(parti[:-1]).encode()
@@ -969,6 +1064,7 @@ def _elabora_pacchetto(dato: bytes, mittente_ip: str) -> None:
             varco.abbinamento_ip = varco.abbinamento_nonce = varco.abbinamento_at = None   # parla gia' con la chiave giusta
 
         da_confermare = None
+        esito_ab = kid_ab = None
         if tipo == "EV":
             da_confermare = _gestisci_evento(db, varco, campi_specifici)
         elif tipo == "SP":
@@ -985,12 +1081,27 @@ def _elabora_pacchetto(dato: bytes, mittente_ip: str) -> None:
             _gestisci_richiesta_cache(db, varco)
         elif tipo == "HB":
             _gestisci_stato_heartbeat(varco, campi_specifici, ts)
+        elif tipo == "AB":
+            esito_ab, kid_ab, media_ab, nuova_ab = ble_inviti.gestisci_richiesta(db, varco.id, campi_specifici)
+            titolo_ab = media_ab.codice if media_ab is not None else ""
+            if nuova_ab:
+                persona_ab = media_ab.persona
+                connessioni.scrivi(t("Telefono abbinato a %(nome)s dal varco '%(varco)s' (titolo %(imp)s)", nome=f"{persona_ab.nome} {persona_ab.cognome}" if persona_ab else "?", varco=varco.nome, imp=titolo_ab[:8]), "info", "persone", varco.id, db)
+            elif media_ab is None:
+                connessioni.scrivi(t("Abbinamento di un telefono respinto dal varco '%(nome)s': %(motivo)s", nome=varco.nome, motivo=ble_inviti.motivo_ultimo or "?"), "warning", "persone", varco.id, db)
 
         db.commit()
         # La conferma parte solo dopo il commit: se la scrittura fallisce lo
         # slave non la riceve e ritrasmette.
         if da_confermare is not None:
             invia_conferma_evento(varco, da_confermare)
+        if esito_ab is not None:
+            if esito_ab == "ok":
+                _invia_firmato(varco, "AR", esito_ab, kid_ab, titolo_ab)
+                if nuova_ab:
+                    invia_cache_finche_confermata(db)   # il telefono deve aprire da subito, su tutti i suoi varchi
+            else:
+                _invia_firmato(varco, "AR", esito_ab, kid_ab)
         # Anti-passback a blocco: dopo un passaggio la posizione e' cambiata, i varchi a blocco ricevono la cache nuova.
         if getattr(_cache_ap_da_rimandare, "v", False):
             _cache_ap_da_rimandare.v = False
@@ -1135,6 +1246,7 @@ def avvia():
     _thread_cache.start()
     _thread_connessioni = threading.Thread(target=_loop_connessioni, daemon=True)
     _thread_connessioni.start()
+    threading.Thread(target=_loop_ripeti_cache, daemon=True).start()
     _thread_tocco = threading.Thread(target=_loop_tocco, daemon=True)
     _thread_tocco.start()
 

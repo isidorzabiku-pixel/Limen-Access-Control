@@ -101,6 +101,12 @@ std::string hmacHex64(const std::string& chiave, const std::string& dati) {
   return esa(out, 32);
 }
 
+void hmacSha256(const std::string& chiave, const uint8_t* dati, size_t n, uint8_t out[32]) { hmac(chiave, dati, n, out); }
+
+void sha256(const uint8_t* dati, size_t n, uint8_t out[32]) {
+  Sha256 s; s.aggiungi(dati, n); s.fine(out);
+}
+
 bool uguali(const std::string& a, const std::string& b) {
   if (a.size() != b.size()) return false;
   uint8_t d = 0;

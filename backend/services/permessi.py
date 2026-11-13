@@ -243,10 +243,10 @@ def spiega_evento(db: Session, evento: Evento) -> dict:
     if esito == EsitoEvento.negato_credenziale_disattivata:
         if not persona.attivo:
             out["righe"].append(t("%(nome_persona)s risulta sospesa.", nome_persona=nome_persona))
-            out["suggerimento"] = t("Riattivala dalla sua scheda in Persone e poi usa \"Scarica dati\".")
+            out["suggerimento"] = t("Riattivala dalla sua scheda in Persone e poi usa \"Invia dati\".")
         elif media is not None and not media.attivo:
             out["righe"].append(t("Il badge %(codice)s e' disattivato.", codice=media.codice))
-            out["suggerimento"] = t("Riattivalo dalla scheda della persona e poi usa \"Scarica dati\".")
+            out["suggerimento"] = t("Riattivalo dalla scheda della persona e poi usa \"Invia dati\".")
         else:
             out["righe"].append(t("Il badge o la persona erano disattivati al momento del passaggio; oggi risultano attivi."))
         return out
@@ -267,13 +267,13 @@ def spiega_evento(db: Session, evento: Evento) -> dict:
             out["righe"].append(evento.dettaglio + ".")
         if esito == EsitoEvento.negato_varco_non_autorizzato:
             out["righe"].append(t("%(nome_persona)s ha delle regole, ma nessuna vale per %(nome_varco)s.", nome_persona=nome_persona, nome_varco=nome_varco))
-            out["suggerimento"] = t("Per farla entrare assegna alla persona (o a un suo gruppo) una regola per %(nome_varco)s, poi usa \"Scarica dati\".", nome_varco=nome_varco)
+            out["suggerimento"] = t("Per farla entrare assegna alla persona (o a un suo gruppo) una regola per %(nome_varco)s, poi usa \"Invia dati\".", nome_varco=nome_varco)
         elif esito == EsitoEvento.negato_policy_disattivata:
             out["righe"].append(t("Una regola con quel varco esiste ma e' spenta, quindi non vale per nessuno."))
-            out["suggerimento"] = t("Riattivala dalla pagina Regole (pulsante Modifica) e poi usa \"Scarica dati\".")
+            out["suggerimento"] = t("Riattivala dalla pagina Regole (pulsante Modifica) e poi usa \"Invia dati\".")
         else:
             out["righe"].append(t("Il permesso c'era nella webapp, ma il dispositivo non aveva ancora i dati aggiornati."))
-            out["suggerimento"] = t("Usa \"Scarica dati ai dispositivi\" dopo ogni modifica a persone, gruppi o regole.")
+            out["suggerimento"] = t("Usa \"Invia dati ai dispositivi\" dopo ogni modifica a persone, gruppi o regole.")
         if riga is not None and riga["consentito"]:
             out["righe"].append(t("Oggi, con i dati attuali, passerebbe."))
         return out

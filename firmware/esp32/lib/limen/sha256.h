@@ -16,6 +16,10 @@ inline std::string hmacHex32(const std::string& chiave, const std::string& dati)
 }
 // HMAC completo (64 caratteri), per i test.
 std::string hmacHex64(const std::string& chiave, const std::string& dati);
+// HMAC-SHA256 grezzo (32 byte in out); la chiave puo' essere binaria.
+void hmacSha256(const std::string& chiave, const uint8_t* dati, size_t n, uint8_t out[32]);
+// SHA-256 grezzo (32 byte in out).
+void sha256(const uint8_t* dati, size_t n, uint8_t out[32]);
 bool uguali(const std::string& a, const std::string& b);   // confronto a tempo costante
 
 }  // namespace gk

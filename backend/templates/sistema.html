@@ -98,15 +98,6 @@
   <a href="/sistema/backup" class="button-link"><button type="button" onclick="window.location='/sistema/backup'">{{ t("Scarica backup") }}</button></a>
 </div>
 
-<div class="card">
-  <h2 style="margin-top:0;">{{ t("Riavvio app") }}{% call aiuto() %}{{ t("Riavvia l'app. Funziona solo se un servizio (systemd) la rialza da solo.") }}{% endcall %}</h2>
-  <form method="post" action="/sistema/riavvia">
-    <button type="submit" style="background:var(--warning); color:#1a1200;"
-            data-conferma="{{ t('Il backend si riavvia adesso. Tutti gli utenti collegati perdono la sessione e devono rifare login.') }}" data-conferma-titolo="{{ t('Riavviare l\'app?') }}"
-            data-conferma-impatto="{{ t('I varchi continuano a decidere da soli con i dati che hanno') }}" data-conferma-azione="{{ t('Riavvia') }}" data-conferma-tono="neutro">{{ t("Riavvia app") }}</button>
-  </form>
-</div>
-
 {% endif %}
 
 <div class="card">
@@ -116,7 +107,7 @@
 
 <div class="card">
   <h2 style="margin-top:0;">{{ t("Cambia la tua password") }}</h2>
-  <form method="post" action="/sistema/password">
+  <form method="post" action="/sistema/password" style="max-width:26rem">
     <input type="password" name="password_attuale" autocomplete="current-password" placeholder="{{ t('Password attuale') }}" required style="width:100%; margin-bottom:0.6rem;">
     <input type="password" name="nuova_password" autocomplete="new-password" placeholder="{{ t('Nuova password (almeno 8 caratteri)') }}" required minlength="8" style="width:100%; margin-bottom:0.6rem;">
     <input type="password" name="conferma_password" autocomplete="new-password" placeholder="{{ t('Ripeti la nuova password') }}" required minlength="8" style="width:100%; margin-bottom:0.6rem;">
@@ -246,6 +237,25 @@
       </form>
     </div>
   </details>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">{{ t("Chiave dei telefoni") }}{% call aiuto() %}{{ t("Da rigenerare se un dispositivo di un varco viene rubato. Tutti i telefoni vanno poi abbinati di nuovo; i badge non cambiano.") }}{% endcall %}</h2>
+  {% if request.query_params.get('telefoni') %}<div class="flash-banner ok" role="status">{{ t("Chiave rigenerata e inviata ai varchi. Invita di nuovo i telefoni.") }}</div>{% endif %}
+  <form method="post" action="/sistema/telefoni/rigenera">
+    <button type="submit" class="danger"
+            data-conferma="{{ t('I telefoni abbinati smettono subito di aprire e vanno invitati di nuovo, uno per uno.') }}" data-conferma-titolo="{{ t('Rigenerare la chiave dei telefoni?') }}"
+            data-conferma-impatto="{{ t('Telefoni da abbinare di nuovo: %(n)s;I badge continuano a funzionare', n=telefoni_ble) }}" data-conferma-azione="{{ t('Rigenera') }}">{{ t("Rigenera chiave dei telefoni") }}</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">{{ t("Riavvio app") }}{% call aiuto() %}{{ t("Riavvia l'app. Funziona solo se un servizio (systemd) la rialza da solo.") }}{% endcall %}</h2>
+  <form method="post" action="/sistema/riavvia">
+    <button type="submit" style="background:var(--warning); color:#1a1200;"
+            data-conferma="{{ t('Il backend si riavvia adesso. Tutti gli utenti collegati perdono la sessione e devono rifare login.') }}" data-conferma-titolo="{{ t('Riavviare l\'app?') }}"
+            data-conferma-impatto="{{ t('I varchi continuano a decidere da soli con i dati che hanno') }}" data-conferma-azione="{{ t('Riavvia') }}" data-conferma-tono="neutro">{{ t("Riavvia app") }}</button>
+  </form>
 </div>
 {% endif %}
 {% endblock %}

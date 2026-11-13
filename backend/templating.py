@@ -8,7 +8,7 @@ comuni (per ora: "ora", che mostra un orario UTC del database in ora locale).
 from fastapi.templating import Jinja2Templates
 
 from database import SessionLocal
-from services import tempo, modifiche, lingua
+from services import tempo, modifiche, lingua, credenziali
 
 templates = Jinja2Templates(directory="templates")
 templates.env.filters["ora"] = tempo.formatta
@@ -31,3 +31,4 @@ templates.env.globals["t"] = lingua.t                          # {{ t("frase ita
 templates.env.globals["lingua_corrente"] = lingua.lingua_corrente
 templates.env.globals["catalogo_versione"] = lingua.versione
 templates.env.globals["LINGUE"] = lingua.LINGUE
+templates.env.tests["telefono"] = credenziali.sembra_impronta_ble   # {% if codice is telefono %}: titolo di un telefono (BLE)

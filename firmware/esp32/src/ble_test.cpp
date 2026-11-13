@@ -6,6 +6,7 @@
 #ifdef LIMEN_BLE_TEST
 #include "ble_test.h"
 #include <NimBLEDevice.h>
+#include <WiFi.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <esp_system.h>
@@ -46,6 +47,8 @@ void bleAvvia() {
   coda = xQueueCreate(4, sizeof(Riga));
   char nome[24];
   snprintf(nome, sizeof(nome), "Limen-BLE-%04X", unsigned((ESP.getEfuseMac() >> 32) & 0xFFFF));
+  // Wi-Fi e BLE condividono la radio: senza modem sleep il controller BT si ferma con abort() (coex_core_enable).
+  WiFi.setSleep(true);
   NimBLEDevice::init(nome);
   NimBLEServer* server = NimBLEDevice::createServer();
   server->setCallbacks(new ServerCb());

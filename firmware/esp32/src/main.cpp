@@ -25,6 +25,7 @@
 #include "pagine.h"
 #include "slave.h"
 #include "ble_test.h"
+#include "ble_cred.h"
 
 using namespace gk;
 
@@ -47,7 +48,7 @@ static Config cfg;
 constexpr int UART_BADGE_RX = 16, UART_BADGE_TX = 17;
 constexpr uint32_t UART_BADGE_BAUD = 115200;
 constexpr int UART_BADGE_LETTORE = 0;                    // indice del lettore nel «Funzionamento» del varco
-#ifndef LIMEN_BLE_LETTORE
+#if !defined(LIMEN_BLE_LETTORE)
 #define LIMEN_BLE_LETTORE 0                              // lettore a cui va il codice ricevuto via BLE (solo con LIMEN_BLE_TEST)
 #endif
 
@@ -566,6 +567,9 @@ void setup() {
 #ifdef LIMEN_BLE_TEST
   bleAvvia();
 #endif
+#ifdef LIMEN_BLE_CRED
+  bleCredAvvia();
+#endif
   avviaWeb();
 }
 
@@ -584,6 +588,9 @@ void loop() {
     leggiUartBadge();
 #ifdef LIMEN_BLE_TEST
     bleLoop(trattaCodiceBle);
+#endif
+#ifdef LIMEN_BLE_CRED
+    bleCredLoop(*slave, LIMEN_BLE_LETTORE);
 #endif
     slave->loop();
   }

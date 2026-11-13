@@ -10,8 +10,9 @@
 
 {% set e = request.query_params.get('errore') %}
 {% if e == 'badge_duplicato' %}<div class="flash-banner err" role="alert">{{ t("Questo codice è già associato a un'altra persona.") }}</div>{% endif %}
+{% if e == 'impronta_ble' %}<div class="flash-banner err" role="alert">{{ t("Questo codice è riservato ai telefoni: si abbina dall'app con un invito, non si assegna come badge.") }}</div>{% endif %}
 {% if e == 'badge_vuoto' %}<div class="flash-banner err" role="alert">{{ t("Scegli la persona a cui assegnare il badge.") }}</div>{% endif %}
-{% if request.query_params.get('assegnato') %}<div class="flash-banner ok" role="status">{{ t("Badge assegnato: da ora il varco lo riconosce (dopo «Scarica dati ai dispositivi»).") }}</div>{% endif %}
+{% if request.query_params.get('assegnato') %}<div class="flash-banner ok" role="status">{{ t("Badge assegnato: da ora il varco lo riconosce (dopo «Invia dati ai dispositivi»).") }}</div>{% endif %}
 
 <form id="mon-filtri" class="card mon-filtri" hx-get="/monitoraggio/righe" hx-target="#mon-risultati" hx-swap="innerHTML"
       hx-trigger="change, input from:#mon-q delay:350ms, submit, every 3s [!monFermo()]" onsubmit="return false">
@@ -20,23 +21,29 @@
     <label class="mon-chip"><input type="radio" name="esito" value="{{ valore }}" {{ 'checked' if f.esito == valore }}><span>{{ etichetta }}</span></label>
     {% endfor %}
   </div>
-  <label class="mon-campo">{{ t("Esito preciso") }}
-    <select name="motivo">
-      <option value="">{{ t("Tutti") }}</option>
-      {% for nome, etichetta in esiti %}<option value="{{ nome }}" {{ 'selected' if f.esito == nome }}>{{ etichetta }}</option>{% endfor %}
-    </select>
+  <label class="mon-campo mon-cerca"><span class="sr-only">{{ t("Persona o credenziale") }}</span>
+    <input type="search" id="mon-q" name="q" value="{{ f.q }}" placeholder="{{ t('Persona o credenziale') }}" autocomplete="off">
   </label>
-  <label class="mon-campo">{{ t("Dal") }} <input type="date" name="da" value="{{ f.da.isoformat() if f.da else '' }}"></label>
-  <label class="mon-campo">{{ t("Al") }} <input type="date" name="a" value="{{ f.a.isoformat() if f.a else '' }}"></label>
-  <label class="mon-campo">{{ t("Varco") }}
-    <select name="varco">
-      <option value="">{{ t("Tutti") }}</option>
-      {% for v in varchi %}<option value="{{ v.id }}" {{ 'selected' if f.varco == v.id }}>{{ v.nome }}</option>{% endfor %}
-    </select>
-  </label>
-  <label class="mon-campo mon-cerca">{{ t("Persona o credenziale") }}
-    <input type="search" id="mon-q" name="q" value="{{ f.q }}" placeholder="{{ t('es. Rossi, 0004523981') }}" autocomplete="off">
-  </label>
+  {% set altri = (1 if f.esito and f.esito not in ('concessi', 'negati', 'allarmi') else 0) + (1 if f.da else 0) + (1 if f.a else 0) + (1 if f.varco else 0) %}
+  <details class="mon-altri" {{ 'open' if altri }}>
+    <summary class="ghost-summary">{{ t("Filtri") }}{% if altri %} <span class="badge">{{ altri }}</span>{% endif %}</summary>
+    <div class="mon-altri-campi">
+      <label class="mon-campo">{{ t("Varco") }}
+        <select name="varco">
+          <option value="">{{ t("Tutti") }}</option>
+          {% for v in varchi %}<option value="{{ v.id }}" {{ 'selected' if f.varco == v.id }}>{{ v.nome }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="mon-campo">{{ t("Esito preciso") }}
+        <select name="motivo">
+          <option value="">{{ t("Tutti") }}</option>
+          {% for nome, etichetta in esiti %}<option value="{{ nome }}" {{ 'selected' if f.esito == nome }}>{{ etichetta }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="mon-campo">{{ t("Dal") }} <input type="date" name="da" lang="{{ lingua_corrente() }}" value="{{ f.da.isoformat() if f.da else '' }}"></label>
+      <label class="mon-campo">{{ t("Al") }} <input type="date" name="a" lang="{{ lingua_corrente() }}" value="{{ f.a.isoformat() if f.a else '' }}"></label>
+    </div>
+  </details>
 </form>
 
 <div id="mon-risultati" aria-live="off">{% include "_monitoraggio_blocco.html" %}</div>

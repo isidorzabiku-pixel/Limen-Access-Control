@@ -1,6 +1,6 @@
 # Contributor License Agreement (CLA)
 
-> Template to be reviewed by a lawyer before external contributions are accepted.
+> Contributions are accepted under this agreement. The text may be refined after a legal review; contributors will be told of any change.
 
 By submitting a contribution (code, documentation, translations, or anything else) to Limen, you ("Contributor") agree that:
 

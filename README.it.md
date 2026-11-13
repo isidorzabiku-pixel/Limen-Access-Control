@@ -35,6 +35,10 @@ con un fornitore: un container su una macchina che hai già.
   il motivo spiegato di ogni accesso negato, stato del sistema, backup e un log diagnostico dettagliato.
 - **Comportamento per varco.** Lettori, uscite (serratura, sirena, inserimento allarme) e ingressi (sensore porta,
   pulsante, telecomando) si configurano dalla web app; modalità: normale, sblocco programmato, manutenzione, emergenza.
+- **Il telefono come credenziale.** Un'app Android apre il varco via Bluetooth LE: il telefono risponde a una
+  sfida nuova con un segreto proprio (HMAC-SHA256), il varco decide in locale come per un badge, e un telefono non abbinato
+  riceve solo un «no» silenzioso. L'abbinamento usa un invito monouso dalla web app. Provato su diversi telefoni Android. Serve il firmware `esp32s3_blecred`;
+  la chiave dei telefoni non è ancora cifrata nella flash dell'ESP32 né nei backup. Vedi [`app-android/`](app-android/README.md).
 - **API REST pubblica** con autenticazione a token e documentazione in PDF (vedi `api/`).
 - **HTTPS ovunque** (certificato autofirmato creato al primo avvio, oppure usa il tuo).
 - **Interfaccia in italiano e inglese**; ogni utente sceglie la propria lingua, e il **manuale d'uso** (PDF) si scarica

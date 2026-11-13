@@ -320,6 +320,39 @@ class EsitoEvento(str, enum.Enum):
     uscita_azionata = "uscita_azionata"
 
 
+class InvitoBle(Base):
+    """Invito monouso per abbinare il telefono di una persona a un varco. Finche' e' valido si tiene la
+    chiave derivata (serve a verificare la prova del telefono); usato o scaduto, la chiave si cancella."""
+    __tablename__ = "inviti_ble"
+
+    id = Column(Integer, primary_key=True)
+    persona_id = Column(Integer, ForeignKey("persone.id"), nullable=False, index=True)
+    hash_codice = Column(String(64), unique=True, nullable=False)
+    creato_il = Column(DateTime, default=datetime.utcnow, nullable=False)
+    scade_il = Column(DateTime, nullable=False)
+    usato_il = Column(DateTime, nullable=True)
+    tentativi_errati = Column(Integer, default=0, nullable=False)
+    varco_id = Column(Integer, ForeignKey("varchi.id"), nullable=True)
+    kid = Column(String(16), nullable=True, index=True)        # identificativo dell'invito nei pacchetti
+    chiave = Column(String(64), nullable=True)                 # chiave derivata dall'invito (esadecimale), fino alla scadenza
+    titolo = Column(String(32), nullable=True)                 # titolo assegnato al telefono (dopo l'uso)
+    sfida_usata = Column(String(64), nullable=True)            # sfida + nonce della richiesta accolta: la sua ripetizione riceve la stessa risposta
+
+
+class RichiestaAbbinamentoBle(Base):
+    """Storico degli abbinamenti dei telefoni (l'invito basta: esito sempre "approvata"). `impronta` e' il titolo
+    del telefono; `chiave_pubblica` non si usa piu' (resta per i database gia' creati)."""
+    __tablename__ = "richieste_abbinamento_ble"
+
+    id = Column(Integer, primary_key=True)
+    persona_id = Column(Integer, ForeignKey("persone.id"), nullable=False, index=True)
+    varco_id = Column(Integer, ForeignKey("varchi.id"), nullable=True)
+    impronta = Column(String(32), nullable=False, index=True)
+    chiave_pubblica = Column(String(140), nullable=False)      # esadecimale, 65 byte
+    creata_il = Column(DateTime, default=datetime.utcnow, nullable=False)
+    esito = Column(String(12), nullable=True)                  # None = in attesa; "approvata" / "rifiutata"
+
+
 class Evento(Base):
     __tablename__ = "eventi"
 

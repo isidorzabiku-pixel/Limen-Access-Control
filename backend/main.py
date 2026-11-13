@@ -37,6 +37,7 @@ logger = logging.getLogger("uvicorn.error")
 # passi"), basta un controllo manuale con ALTER TABLE ... ADD COLUMN — SQLite
 # lo supporta bene per colonne nullable o con un DEFAULT, come queste.
 COLONNE_AGGIUNTE = {
+    "inviti_ble": {"varco_id": "INTEGER", "kid": "VARCHAR(16)", "chiave": "VARCHAR(64)", "titolo": "VARCHAR(32)", "sfida_usata": "VARCHAR(64)"},
     "users": {"lingua": "VARCHAR(5)", "password_predefinita": "BOOLEAN NOT NULL DEFAULT 0"},
     "varchi": {
         "ultima_cache_versione": "INTEGER",

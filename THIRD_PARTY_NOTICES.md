@@ -34,6 +34,15 @@ The SHA-256 / HMAC code in `lib/limen/` is written for this project from the FIP
 core is LGPL: if you distribute **compiled firmware binaries**, include the core's license text and let recipients relink
 (distributing the source of this repository is enough for the source form).
 
+## Android app (`app-android/`)
+Bundled in the APK: Jetpack Compose and AndroidX (Compose BOM 2024.12.01, activity-compose 1.9.3, lifecycle 2.8.7), the Kotlin
+standard library and Material 3 — all Apache-2.0. The app uses the platform Bluetooth API directly (no BLE library).
+
+## Phone credential firmware (`esp32s3_blecred`)
+| Component | License |
+|---|---|
+| NimBLE-Arduino 1.4.3 | Apache-2.0 |
+
 ## Python test agent (`agent/`, not maintained)
 pyserial (BSD-3-Clause), PyYAML (MIT), gpiozero (BSD-3-Clause).
 

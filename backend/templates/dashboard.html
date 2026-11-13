@@ -17,6 +17,9 @@
   .feed-icon { width:30px; height:30px; border-radius:8px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
   .feed-icon.ok { background: rgba(34,197,94,0.15); color: var(--ok); }
   .feed-icon.err { background: rgba(239,68,68,0.15); color: var(--err); }
+  .feed-icon.warn { background: rgba(251,191,36,0.15); color: var(--warning); }
+  a.feed-link { color: inherit; text-decoration: none; }
+  a.feed-link:hover .feed-title { color: var(--accent); }
   .feed-icon.info { background: var(--accent-dim); color: var(--accent); }
   .feed-main { flex:1; min-width:0; }
   .feed-title { font-size:0.88rem; font-weight:600; }
@@ -101,9 +104,12 @@
       <h2>{{ t("Passaggi in diretta") }}</h2>
       {% for e in eventi %}
       {% set etichetta, classe = esito_info.get(e.esito, (e.esito.value, 'err')) %}
-      <div class="feed-row">
-        <div class="feed-icon {{ classe }}">
-          {% if classe == 'ok' %}
+      {% set allarme = e.esito.value in ('porta_forzata', 'porta_lasciata_aperta') %}
+      <a class="feed-row feed-link" href="/monitoraggio?{{ 'esito=allarmi' if allarme else ('q=' ~ (e.persona.cognome if e.persona else (e.media_codice or ''))) }}">
+        <div class="feed-icon {{ 'warn' if allarme else classe }}">
+          {% if allarme %}
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 1.8c-1.8 0-3 1.4-3 3.3 0 2.5-.5 3.5-1.5 4.7h9c-1-1.2-1.5-2.2-1.5-4.7 0-1.9-1.2-3.3-3-3.3Z"/><path d="M5.8 11.5a1.7 1.7 0 0 0 3.4 0"/></svg>
+          {% elif classe == 'ok' %}
           <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5l3 3 6-6.5"/></svg>
           {% elif classe == 'err' %}
           <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l7 7M11 4l-7 7"/></svg>
@@ -113,10 +119,10 @@
         </div>
         <div class="feed-main">
           <div class="feed-title">{{ e.varco.nome if e.varco else (e.varco_nome or "—") }}</div>
-          <div class="feed-sub">{{ etichetta }}{% if e.dettaglio %} &middot; {{ e.dettaglio }}{% endif %}{% if e.media_codice %} &middot; <span class="mono">{{ e.media_codice }}</span>{% endif %}{% if e.persona %} &middot; {{ e.persona.nome }} {{ e.persona.cognome }}{% endif %}</div>
+          <div class="feed-sub">{{ etichetta }}{% if e.dettaglio %} &middot; {{ e.dettaglio }}{% endif %}{% if e.media_codice is telefono %} &middot; {{ t("BLE") }}{% elif e.media_codice %} &middot; <span class="mono">{{ e.media_codice }}</span>{% endif %}{% if e.persona %} &middot; {{ e.persona.nome }} {{ e.persona.cognome }}{% endif %}</div>
         </div>
         <div class="feed-time">{{ e.timestamp|ora("%H:%M:%S") }}</div>
-      </div>
+      </a>
       {% else %}
       <p class="muted">{{ t("Nessun evento ancora registrato.") }}</p>
       {% endfor %}
@@ -173,7 +179,7 @@
         </div>
         <div class="feed-main">
           <div class="feed-title">{{ a.titolo }}</div>
-          <div class="feed-sub">{{ a.descrizione }}</div>
+          {% if a.descrizione %}<div class="feed-sub">{{ a.descrizione }}</div>{% endif %}
         </div>
       </div>
       {% else %}

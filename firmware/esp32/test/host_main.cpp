@@ -61,6 +61,12 @@ struct HalPc : Hal {
   }
 };
 
+static std::string bin(const std::string& h) {
+  std::string o;
+  for (size_t i = 0; i + 1 < h.size(); i += 2) o += char(std::stoi(h.substr(i, 2), nullptr, 16));
+  return o;
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) { fprintf(stderr, "uso: %s <id> <cartella> [--no-clock] [--hb=sec]\n", argv[0]); return 2; }
   HalPc hal; hal.dir = argv[2];
@@ -114,6 +120,21 @@ int main(int argc, char** argv) {
           printf("BADGE %s %s\n", e.ignorato ? "ignorato" : (e.concesso ? "si" : "no"), e.esito.c_str()); fflush(stdout); }
         else if (v == "input") { int n, lv; is >> n >> lv; if (n >= 0 && n < 2) hal.ingresso[n] = lv != 0; printf("OK\n"); fflush(stdout); }
         else if (v == "status") { printf("STATUS %s\n", slave.statoJson().c_str()); fflush(stdout); }
+        // Come fa src/ble_cred.cpp. "ab <sfida> <nonce> <mac>": abbinamento; "bleopen <titolo> <sfida> <mac> <lettore>": apertura.
+        else if (v == "ab") { std::string ns, np, mac; is >> ns >> np >> mac;
+          std::string bns = bin(ns), bnp = bin(np), bmac = bin(mac);
+          bool ok = bns.size() == 16 && bnp.size() == 16 && bmac.size() == 32
+                 && slave.verificaProvaBle((const uint8_t*)bns.data(), (const uint8_t*)bnp.data(), (const uint8_t*)bmac.data());
+          if (ok) ok = slave.inoltraAbbinamentoBle((const uint8_t*)bns.data(), (const uint8_t*)bnp.data(), (const uint8_t*)bmac.data());
+          printf("AB %s\n", ok ? "sent" : "refused"); fflush(stdout); }
+        else if (v == "bleopen") { std::string tit, ns, mac; int l = 0; is >> tit >> ns >> mac >> l;
+          std::string bns = bin(ns), bmac = bin(mac);
+          if (bns.size() != 16 || bmac.size() != 32 || !slave.verificaAperturaBle(tit, (const uint8_t*)bns.data(), (const uint8_t*)bmac.data())) {
+            printf("BLEOPEN NO\n"); fflush(stdout);       // silenzio: nessun evento
+          } else { EsitoBadge e = slave.badge(tit, l);
+            printf("BLEOPEN %s %s\n", e.ignorato ? "ignorato" : (e.concesso ? "si" : "no"), e.esito.c_str()); fflush(stdout); } }
+        else if (v == "abesito") { std::string e = slave.prendiEsitoAbbinamentoBle(); printf("ABESITO %s\n", e.c_str()); fflush(stdout); }
+        else if (v == "bewin") { printf("BEWIN %d\n", slave.finestraBleAperta() ? 1 : 0); fflush(stdout); }
         else if (v == "forget") { slave.dimenticaAbbinamento(); printf("OK\n"); fflush(stdout); }
       }
     }

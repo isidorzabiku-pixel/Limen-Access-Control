@@ -107,6 +107,19 @@ def coda(varco_id: int) -> Optional[int]:
         return _coda.get(varco_id)
 
 
+_firmware: dict[int, str] = {}           # varco_id -> versione del firmware (dall'heartbeat)
+
+
+def segna_firmware(varco_id: int, versione: str) -> None:
+    with _lock:
+        _firmware[varco_id] = versione
+
+
+def firmware(varco_id: int) -> Optional[str]:
+    with _lock:
+        return _firmware.get(varco_id)
+
+
 def dimentica(varco_id: int) -> None:
     """Il varco e' stato eliminato: niente stato residuo nel caso un nuovo varco riusi il numero."""
     with _lock:

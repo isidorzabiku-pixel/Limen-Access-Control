@@ -11,7 +11,7 @@
   <div class="varco-actions">
     <form class="inline" method="post" action="/varchi/{{ v.id }}/apri">
       <input type="hidden" name="redirect_to" value="/">
-      <button type="submit" {% if not v.attivo %}disabled title="{{ t('Varco disattivato: riattivalo per poterlo aprire') }}"{% endif %}>{{ t("Apri") }}</button>
+      <button type="submit" {% if not v.attivo %}disabled title="{{ t('Varco disattivato: riattivalo per poterlo aprire') }}"{% elif not v.online %}disabled title="{{ t('Dispositivo offline: il comando non arriverebbe') }}"{% endif %}>{{ t("Apri") }}</button>
     </form>
   </div>
 </div>

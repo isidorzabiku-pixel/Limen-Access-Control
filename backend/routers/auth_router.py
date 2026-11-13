@@ -1,6 +1,9 @@
 # Limen — open-source access control
 # Copyright (C) 2026 Isidor Zabiku
 # SPDX-License-Identifier: AGPL-3.0-only
+import threading
+import time
+
 from fastapi import APIRouter, Request, Depends, Form
 from fastapi.responses import RedirectResponse, HTMLResponse
 from sqlalchemy.orm import Session
@@ -22,6 +25,35 @@ def login_page(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse("login.html", {"request": request, "error": None})
 
 
+# Blocco temporaneo dopo troppi errori dallo stesso indirizzo (in memoria: un riavvio lo azzera).
+MAX_ERRORI_LOGIN = 5
+BLOCCO_LOGIN_SEC = 300
+_errori_login: dict[str, list[float]] = {}
+_lock_login = threading.Lock()
+
+
+def _login_bloccato(chiavi: list[str]) -> bool:
+    ora = time.monotonic()
+    with _lock_login:
+        for k in chiavi:
+            recenti = [x for x in _errori_login.get(k, []) if ora - x < BLOCCO_LOGIN_SEC]
+            if recenti:
+                _errori_login[k] = recenti
+            else:
+                _errori_login.pop(k, None)
+            if len(recenti) >= MAX_ERRORI_LOGIN:
+                return True
+    return False
+
+
+def _segna_errore_login(chiavi: list[str]) -> None:
+    with _lock_login:
+        if len(_errori_login) > 5000:          # non cresce senza limite sotto attacco
+            _errori_login.clear()
+        for k in chiavi:
+            _errori_login.setdefault(k, []).append(time.monotonic())
+
+
 @router.post("/login", response_class=HTMLResponse)
 def login_submit(
     request: Request,
@@ -29,8 +61,17 @@ def login_submit(
     password: str = Form(...),
     db: Session = Depends(get_db),
 ):
+    ip_cliente = request.client.host if request.client else "?"
+    chiavi = [f"ip:{ip_cliente}"]      # solo per indirizzo: per nome utente chiunque potrebbe tenere fuori l'admin
+    if _login_bloccato(chiavi):
+        return templates.TemplateResponse(
+            "login.html",
+            {"request": request, "error": t("Troppi tentativi sbagliati: riprova tra qualche minuto.")},
+            status_code=429,
+        )
     user = get_user_by_username(db, username)
     if not user or not verify_password(password, user.password_hash):
+        _segna_errore_login(chiavi)
         registra_log(db, t("Tentativo di login fallito per '%(username)s'", username=username), livello="warning", categoria="auth",
                      codice="AUTH_LOGIN_KO", utente=username[:80], ip=request.client.host if request.client else None,
                      dettagli={"motivo": "utente inesistente" if not user else "password errata"})

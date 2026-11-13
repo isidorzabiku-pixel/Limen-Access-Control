@@ -41,7 +41,7 @@
 {% endmacro %}
 
 {#
-  scarica_dati_button: bottone "Scarica dati ai dispositivi" — manda subito
+  scarica_dati_button: bottone "Invia dati ai dispositivi" — manda subito
   (via UDP, a ciascun dispositivo) la cache di autorizzazioni a tutti i varchi, invece di
   aspettare il giro automatico ogni 6h, e aspetta fino a 2s la conferma di
   consegna reale (pacchetto CA di risposta dello slave) prima di mostrare
@@ -80,7 +80,7 @@
 {% endif %}
 <form method="post" action="/varchi/scarica-dati" style="display:block; margin:0 0 1rem;">
   <input type="hidden" name="redirect_to" value="{{ redirect_to }}">
-  <button type="submit">{{ t("Scarica dati ai dispositivi") }}</button>
+  <button type="submit"{% if not dati_stato().da_inviare %} class="ghost"{% endif %}>{{ t("Invia dati ai dispositivi") }}</button>
 </form>
 {% endmacro %}
 

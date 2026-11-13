@@ -15,6 +15,7 @@ Colonne (intestazione obbligatoria, ordine libero, separatore ; , o tab):
   valido_da, valido_a      validita' del badge: gg/mm/aaaa, gg/mm/aaaa hh:mm o aaaa-mm-gg
                            (ora locale; senza orario valido_a vale fino a fine giornata)
 """
+from services.credenziali import sembra_impronta_ble
 import csv
 import io
 import unicodedata
@@ -166,6 +167,10 @@ def importa(db: Session, dati: bytes) -> dict:
                 modificata = True
 
         badge_nuovo = False
+        if codice and sembra_impronta_ble(codice):
+            rep.setdefault("impronte_ble_saltate", 0)
+            rep["impronte_ble_saltate"] += 1
+            codice = ""
         if codice:
             esistente = db.query(AccessMedia).filter(AccessMedia.codice == codice).first()
             if esistente is None:

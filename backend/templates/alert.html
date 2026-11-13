@@ -21,6 +21,7 @@
   .alert-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
   .alert-error .alert-dot { background: var(--err); }
   .alert-warning .alert-dot { background: #f59e0b; }
+  .alert-info .alert-dot { background: var(--accent); }
   .alert-time { font-size:0.75rem; }
   .alert-head { display:flex; align-items:center; justify-content:space-between; gap:0.75rem; flex-wrap:wrap; margin-bottom:0.75rem; }
   .alert-head h2 { margin:0; font-size:1rem; }
@@ -40,8 +41,8 @@
   <div class="alert-row alert-{{ a.livello }}">
     <div class="alert-main">
       <div class="alert-title"><span class="alert-dot"></span>{{ a.titolo }}</div>
-      <div class="muted">{{ a.descrizione }}</div>
-      {% if a.timestamp %}<div class="muted alert-time">{{ a.timestamp|ora }}</div>{% endif %}
+      {% if a.descrizione %}<div class="muted">{{ a.descrizione }}</div>{% endif %}
+      {% if a.timestamp and not a.senza_ora %}<div class="muted alert-time">{{ a.timestamp|ora }}</div>{% endif %}
     </div>
     {% if a.evento_id %}
     <form method="post" action="/alert/{{ a.evento_id }}/gestisci" class="inline">

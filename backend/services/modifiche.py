@@ -5,7 +5,7 @@
 Tiene traccia di QUANDO e' cambiata la configurazione che finisce nella cache dei
 dispositivi (persone, badge, gruppi, policy, fasce, festivita', e per ogni varco
 attivazione/modalita'/durata), per mostrare "dati non aggiornati" finche' non vengono
-rimandati ai varchi con "Scarica dati".
+rimandati ai varchi con "Invia dati".
 
 Si aggancia alle sessioni SQLAlchemy: prima del flush guarda cosa e' cambiato, dopo il
 commit scrive l'istante nella tabella `impostazioni` (chiavi `cfg_mod:globale` e

@@ -88,7 +88,15 @@ prefix as the UART reader) to the characteristic `d112ee41-dffe-4656-9c99-1bb61f
 the same rules as the console. The serial monitor shows `[ble]` lines.
 
 **No authentication**: anyone in range can write a code. It is a bench tool, never for a real door. A real BLE
-credential needs a challenge-response with a per-user key. Not yet tried on a board.
+credential needs a challenge-response with a per-user key. Tried on a board with LightBlue on an iPhone.
+
+## BLE phone reader (separate build)
+
+`pio run -e esp32s3_blecred -t upload` builds the firmware with the phone reader (`src/ble_cred.*`, device name
+`Limen-XXXX`). Each phone has a credential code and a secret received at pairing; to open it answers the reader's
+challenge with an HMAC. An unpaired phone only gets `NO` and leaves no trace. Pairing is started from the master
+(person → Access credentials → Invite a phone). The protocol is described at the top of `src/ble_cred.h`. Not yet
+confirmed on real hardware with the current protocol.
 
 With nothing wired an input reads "high": from the page you can **force the level** of each input to test the door
 sensor and the button (for an NC contact, pin high = contact open = door open).

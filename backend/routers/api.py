@@ -23,6 +23,8 @@ from models import AccessMedia, ApiAccount, Evento, Persona, Varco
 from services import api_accesso, tempo, udp_agent
 from services.logger import registra_log
 
+from services.credenziali import sembra_impronta_ble
+
 router = APIRouter(prefix="/api/v1", tags=["API"])
 
 
@@ -155,6 +157,8 @@ def create_visitor(d: NewVisitor, acc: ApiAccount = Depends(account_corrente), d
     if da and a < da:
         raise HTTPException(422, "valid_until is before valid_from")
     codice = (d.badge_code or "").strip()
+    if sembra_impronta_ble(codice):
+        raise HTTPException(422, "This code is reserved for phone credentials (pairing)")
     if codice and db.query(AccessMedia).filter(AccessMedia.codice == codice).first():
         raise HTTPException(409, "This badge is already assigned")
     p = Persona(nome=d.first_name.strip(), cognome=d.last_name.strip(), ospite=True, valido_da=da, valido_a=a)
@@ -178,6 +182,8 @@ def add_badge(person_id: int, d: NewBadge, acc: ApiAccount = Depends(account_cor
     if p is None:
         raise HTTPException(404, "Person not found")
     codice = d.code.strip()
+    if sembra_impronta_ble(codice):
+        raise HTTPException(422, "This code is reserved for phone credentials (pairing)")
     if db.query(AccessMedia).filter(AccessMedia.codice == codice).first():
         raise HTTPException(409, "This badge is already assigned")
     db.add(AccessMedia(codice=codice, persona_id=p.id))

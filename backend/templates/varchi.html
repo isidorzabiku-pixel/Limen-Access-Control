@@ -44,7 +44,7 @@
 <div class="flash-banner ok" role="status">{{ t("Varco creato. Apri il dettaglio per descrizione, presenze, anti-passback e funzionamento.") }}</div>
 {% endif %}
 {% if request.query_params.get('funz_salvato') == '1' %}
-<div class="flash-banner ok" role="status">{{ t("Funzionamento salvato. Arriva al varco con «Scarica dati».") }}</div>
+<div class="flash-banner ok" role="status">{{ t("Funzionamento salvato. Arriva al varco con «Invia dati».") }}</div>
 {% elif request.query_params.get('funz_salvato') == '2' %}
 <div class="flash-banner ok" role="status">{{ t("Funzionamento salvato e mandato al dispositivo.") }}</div>
 {% endif %}
@@ -180,7 +180,7 @@
       </div>
 
       <div class="drawer-section">
-        <h3>{{ t("Funzionamento") }}{% call aiuto(etichetta=t("funzionamento")) %}{{ t("Modalità, lettori, uscite e ingressi del varco. La modalità arriva subito; il resto con «Scarica dati».") }}{% endcall %}</h3>
+        <h3>{{ t("Funzionamento") }}{% call aiuto(etichetta=t("funzionamento")) %}{{ t("Modalità, lettori, uscite e ingressi del varco. La modalità arriva subito; il resto con «Invia dati».") }}{% endcall %}</h3>
         <div class="riga-azione">
           <span class="funz-riepilogo">{% if v.modalita != 'normale' %}<strong>{{ {'sblocco': t('Sblocco programmato'), 'manutenzione': t('Manutenzione'), 'emergenza': t('Emergenza')}[v.modalita] }}</strong> · {% endif %}{{ fn_riepilogo }}{% if not fn_esplicito %} <span class="muted">{{ t("· valori predefiniti") }}</span>{% endif %}</span>
           <a href="/varchi?apri={{ v.id }}&scheda=controllo&funz=1" class="btn-link">{{ t("Configura") }}</a>
@@ -293,12 +293,22 @@
     {# ---------------- DISPOSITIVO: collegamento dello slave ---------------- #}
     <section role="tabpanel" class="scheda-pannello" id="pan-dispositivo" aria-labelledby="tab-dispositivo" {{ '' if scheda == 'dispositivo' else 'hidden' }}>
       <div class="drawer-section">
-        <h3>{{ t("Collegamento") }}{% call aiuto(etichetta=t("collegamento")) %}{{ t("L'IP del dispositivo si modifica dalla tabella principale dei varchi.") }}{% endcall %}</h3>
+        <h3>{{ t("Collegamento") }}{% call aiuto(etichetta=t("collegamento")) %}{{ t("Indirizzo fisso del dispositivo: il master parla solo con quello.") }}{% endcall %}</h3>
         <dl class="dati">
           <dt>{{ t("Stato") }}</dt><dd>{% if v.online %}<span class="pallino ok"></span> {{ t("Online") }}{% else %}<span class="pallino err"></span> {{ t("Offline") }}{% endif %}</dd>
-          <dt>{{ t("Indirizzo IP") }}</dt><dd>{{ v.ip_address or t("non impostato") }}</dd>
+          <dt>{{ t("Indirizzo IP") }}</dt><dd>{% if v.ip_address %}<span class="mono">{{ v.ip_address }}</span>{% else %}{{ t("non impostato") }}{% endif %}</dd>
           <dt>{{ t("Ultimo contatto") }}</dt><dd>{{ v.ultimo_contatto|ora if v.ultimo_contatto else t("mai") }}</dd>
+          {% if v.firmware %}<dt>{{ t("Firmware") }}</dt><dd><span class="mono">{{ v.firmware }}</span></dd>{% endif %}
         </dl>
+        {% if user.is_admin %}
+        <details class="anteprima">
+          <summary>{{ t("Cambia indirizzo IP") }}</summary>
+          <form method="post" action="/varchi/{{ v.id }}/ip" class="campo-copia">
+            <input type="text" name="ip_address" value="{{ v.ip_address or '' }}" placeholder="{{ t('es. 192.168.1.50') }}" aria-label="{{ t('Indirizzo IP') }}" inputmode="decimal">
+            <button type="submit">{{ t("Salva") }}</button>
+          </form>
+        </details>
+        {% endif %}
       </div>
 
       {% if user.is_admin %}

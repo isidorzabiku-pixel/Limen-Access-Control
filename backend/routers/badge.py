@@ -25,6 +25,8 @@ def _base_persona(db: Session, persona_id) -> str:
     p = db.query(Persona).filter(Persona.id == int(persona_id)).first() if str(persona_id).isdigit() else None
     return "/visitatori" if p is not None and p.ospite else "/persone"
 
+from services.credenziali import sembra_impronta_ble
+
 router = APIRouter()
 
 
@@ -59,7 +61,7 @@ def credenziali_sconosciute_recenti(db: Session, quante: int = 8, giorni: int = 
     ignorate = {c: t for c, t in db.query(CredenzialeIgnorata.codice, CredenzialeIgnorata.ignorata_at)
                 .filter(CredenzialeIgnorata.codice.in_(list(visti))).all()}
     return [v for k, v in visti.items()
-            if k not in gia and not (k in ignorate and v["timestamp"] <= ignorate[k])][:quante]
+            if not sembra_impronta_ble(k) and k not in gia and not (k in ignorate and v["timestamp"] <= ignorate[k])][:quante]
 
 
 @router.post("/media/ignora")
@@ -82,6 +84,27 @@ def ignora_credenziale(
     return RedirectResponse(destinazione_sicura(redirect_to, "/persone"), status_code=303)
 
 
+@router.post("/media/ignora-tutte")
+def ignora_tutte_le_credenziali(
+    request: Request,
+    redirect_to: str = Form("/persone"),
+    db: Session = Depends(get_db),
+):
+    """«Ignora tutte»: via dall'elenco tutte le credenziali sconosciute di adesso (anche quelle non mostrate).
+    Come «Ignora», una nuova lettura le fa ricomparire."""
+    require_login(request, db)
+    adesso = datetime.utcnow()
+    codici = [s["codice"] for s in credenziali_sconosciute_recenti(db, quante=100000)]
+    gia = {r.codice: r for r in db.query(CredenzialeIgnorata).filter(CredenzialeIgnorata.codice.in_(codici)).all()} if codici else {}
+    for codice in codici:
+        if codice in gia:
+            gia[codice].ignorata_at = adesso
+        else:
+            db.add(CredenzialeIgnorata(codice=codice, ignorata_at=adesso))
+    db.commit()
+    return RedirectResponse(destinazione_sicura(redirect_to, "/persone"), status_code=303)
+
+
 @router.post("/media/assegna")
 def assegna_credenziale(
     request: Request,
@@ -98,6 +121,8 @@ def assegna_credenziale(
     persona = db.query(Persona).filter(Persona.id == persona_id).first()
     if not codice or persona is None:
         return RedirectResponse(f"{destinazione}{sep}errore=badge_vuoto", status_code=303)
+    if sembra_impronta_ble(codice):
+        return RedirectResponse(f"{destinazione}{sep}errore=impronta_ble", status_code=303)
     if db.query(AccessMedia).filter(AccessMedia.codice == codice).first() is not None:
         return RedirectResponse(f"{destinazione}{sep}errore=badge_duplicato", status_code=303)
     db.add(AccessMedia(codice=codice, persona_id=persona.id))

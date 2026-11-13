@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Isidor Zabiku
 // SPDX-License-Identifier: AGPL-3.0-only
 #include "slave.h"
+#include "ble.h"
 #include <algorithm>
 #include <cstring>
 #include "sha256.h"
@@ -26,6 +27,13 @@ Slave::Slave(Hal& hal, uint32_t varcoId, int intervalloBattitoSec)
 
 // ---------------------------------------------------------------- avvio
 
+static int esaCifra(char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  return -1;
+}
+
 void Slave::begin() {
   nonce_ = hal_.randomHex(8);
   std::string k;
@@ -48,6 +56,18 @@ void Slave::begin() {
       hal_.log(1, "Cache in flash unreadable: ignored");
     }
   }
+  std::string kt;
+  if (hal_.load("telefoni", kt)) {
+    while (!kt.empty() && (kt.back() == '\n' || kt.back() == '\r' || kt.back() == ' ')) kt.pop_back();
+    if (kt.size() == 64) {
+      std::string k(32, '\0'); bool ok = true;
+      for (int i = 0; i < 32 && ok; i++) {
+        int alto = esaCifra(kt[2 * i]), basso = esaCifra(kt[2 * i + 1]);
+        if (alto < 0 || basso < 0) ok = false; else k[i] = char(alto * 16 + basso);
+      }
+      if (ok) chiaveTelefoni_ = k;
+    }
+  }
   caricaCoda();
   std::string u;
   if (hal_.load("uscite", u)) {
@@ -60,6 +80,7 @@ void Slave::begin() {
 void Slave::dimenticaAbbinamento() {
   chiave_.clear();
   hal_.save("chiave", "");
+  chiudiFinestraBle();
   cache_ = Cache(); cacheRicevuta_ = false; cacheFresca_ = false;
   hal_.save("cache", "");
   coda_.clear(); salvaCoda();
@@ -107,6 +128,57 @@ void Slave::impostaMaster(const std::string& ip) {
   hal_.log(0, "Master: " + ip);
 }
 
+void Slave::chiudiFinestraBle() {
+  if (!chiaveInvito_.empty()) hal_.log(0, "Phone pairing window closed");
+  chiaveInvito_.assign(chiaveInvito_.size(), '\0'); chiaveInvito_.clear();
+  finestraBleFinoA_ = 0; erroriBle_ = 0; abTentativi_ = 0;
+}
+
+static bool macUguali(const uint8_t* a, const uint8_t* b) {     // tempo costante
+  uint8_t d = 0;
+  for (size_t i = 0; i < LUNGHEZZA_MAC_BLE; i++) d |= uint8_t(a[i] ^ b[i]);
+  return d == 0;
+}
+
+bool Slave::verificaAperturaBle(const std::string& titolo, const uint8_t* sfida, const uint8_t* mac) const {
+  if (chiaveTelefoni_.empty() || !titoloBleValido(titolo) || cache_.trova(titolo.c_str()) == nullptr) return false;
+  uint8_t segreto[32], atteso[32];
+  segretoTelefono(chiaveTelefoni_, titolo, segreto);
+  macBle(std::string(reinterpret_cast<const char*>(segreto), 32), "LIMEN-OPEN", sfida, nullptr, atteso);
+  return macUguali(atteso, mac);
+}
+
+bool Slave::verificaProvaBle(const uint8_t* sfida, const uint8_t* nonceTel, const uint8_t* mac) {
+  if (!finestraBleAperta()) return false;
+  uint8_t atteso[32];
+  macBle(chiaveInvito_, "LIMEN-PAIR", sfida, nonceTel, atteso);
+  if (macUguali(atteso, mac)) return true;
+  if (++erroriBle_ >= MAX_ERRORI_ABBINAMENTO_BLE) {
+    hal_.log(1, "Phone pairing: too many wrong attempts, window closed");
+    chiudiFinestraBle();
+  }
+  return false;
+}
+
+void Slave::mandaAbbinamentoBle() {
+  abInviatoAlle_ = hal_.millis();
+  abTentativi_++;
+  mandaFirmato({"AB", std::to_string(id_), std::to_string(ora()), idInvito_,
+                esadecimale(reinterpret_cast<const uint8_t*>(abSfida_.data()), abSfida_.size()),
+                esadecimale(reinterpret_cast<const uint8_t*>(abNonce_.data()), abNonce_.size()), abMacHex_});
+}
+
+bool Slave::inoltraAbbinamentoBle(const uint8_t* sfida, const uint8_t* nonceTel, const uint8_t* mac) {
+  if (!finestraBleAperta() || chiave_.empty() || masterIp_.empty() || chiaveTelefoni_.empty()) return false;
+  esitoAbBle_.clear();
+  abSfida_.assign(reinterpret_cast<const char*>(sfida), LUNGHEZZA_NONCE_BLE);
+  abNonce_.assign(reinterpret_cast<const char*>(nonceTel), LUNGHEZZA_NONCE_BLE);
+  abMacHex_ = esadecimale(mac, LUNGHEZZA_MAC_BLE);
+  abTentativi_ = 0;
+  mandaAbbinamentoBle();
+  return true;
+}
+
 void Slave::mandaPresentazione(const std::string& ip) {
   // PR non e' firmato (non c'e' ancora una chiave) e non porta segreti: il master lo mostra all'admin, che decide.
   // Va a chi ci ha appena toccato.
@@ -132,7 +204,7 @@ std::string Slave::statoUsciteTesto() const {
 void Slave::mandaBattito() {
   if (chiave_.empty() || masterIp_.empty()) return;
   mandaFirmato({"HB", std::to_string(id_), std::to_string(ora()), std::to_string(deriva_), std::to_string(coda_.size()),
-                statoPortaTesto(), statoUsciteTesto()});
+                statoPortaTesto(), statoUsciteTesto(), VERSIONE_FIRMWARE});
 }
 
 void Slave::mandaRichiestaCache() { mandaFirmato({"RC", std::to_string(id_), std::to_string(ora())}); }
@@ -210,6 +282,8 @@ void Slave::onDatagram(const uint8_t* dati, size_t n, const std::string& ip) {
   if (testo.compare(0, 3, "HI|") == 0) { gestisciTocco(testo, ip); return; }
   if (testo.compare(0, 3, "PA|") == 0) { gestisciAbbinamento(testo, ip); return; }
   if (chiave_.empty()) return;                        // non abbinato: il resto e' firmato e non si puo' verificare
+  // Cache e comandi valgono solo dal master che conosciamo (l'IP si impara da un tocco firmato).
+  if (!masterIp_.empty() && !ip.empty() && ip != masterIp_) return;
   if (testo[0] == '{' || testo.find('\n') != std::string::npos) { gestisciCache(dati, n); return; }
   gestisciPiccolo(testo);
 }
@@ -223,6 +297,7 @@ void Slave::gestisciAbbinamento(const std::string& testo, const std::string& ip)
   if (!uguali(p[3], nonce_) || !chiaveValida(p[4])) return;
   chiave_ = p[4];
   hal_.save("chiave", chiave_ + "\n");
+  cache_.versione = 0;                                 // master nuovo: le sue versioni ripartono da capo
   impostaMaster(ip);
   hal_.log(0, "Paired with the master: key received and saved.");
   mandaRichiestaCache();
@@ -274,6 +349,42 @@ void Slave::gestisciPiccolo(const std::string& testo) {
     int64_t idx;
     if (campi.size() >= 2 && parseInt(campi[0], idx) && (campi[1] == "i" || campi[1] == "1" || campi[1] == "0"))
       comandoUscita(int(idx), campi[1][0]);
+  } else if (tipo == "BP") {
+    // BP|id|ts|secondi|id_invito|chiave_cifrata: chiave = cifrata XOR HMAC(chiave varco, "BP-KEY|id|ts"). secondi 0 = chiudi.
+    int64_t sec = 0;
+    if (campi.empty() || !parseInt(campi[0], sec) || sec <= 0 || sec > 900 || campi.size() < 3 || campi[2].size() != 64) {
+      chiudiFinestraBle();
+    } else {
+      uint8_t pad[32];
+      std::string base = "BP-KEY|" + p[1] + "|" + p[2];
+      hmacSha256(chiave_, reinterpret_cast<const uint8_t*>(base.data()), base.size(), pad);
+      std::string k(32, '\0');
+      bool ok = true;
+      for (int i = 0; i < 32 && ok; i++) {
+        int alto = esaCifra(campi[2][2 * i]), basso = esaCifra(campi[2][2 * i + 1]);
+        if (alto < 0 || basso < 0) ok = false; else k[i] = char(uint8_t(alto * 16 + basso) ^ pad[i]);
+      }
+      if (ok) {
+        chiaveInvito_ = k; idInvito_ = campi[1]; erroriBle_ = 0; esitoAbBle_.clear(); abTentativi_ = 0;
+        finestraBleFinoA_ = hal_.millis() + uint64_t(sec) * 1000;
+        hal_.log(0, "Phone pairing window open for " + std::to_string(sec) + " s");
+      }
+    }
+  } else if (tipo == "AR") {
+    // AR|id|ts|esito|id_invito|titolo: con "ok" il master ha creato il titolo; il segreto lo calcola lo slave
+    // e la credenziale va al telefono cifrata con la chiave dell'invito.
+    if (campi.size() >= 2 && campi[1] == idInvito_ && abTentativi_ > 0 && !chiaveInvito_.empty()) {
+      if (campi[0] == "ok" && campi.size() >= 3 && titoloBleValido(campi[2]) && !chiaveTelefoni_.empty()) {
+        uint8_t segreto[32];
+        segretoTelefono(chiaveTelefoni_, campi[2], segreto);
+        esitoAbBle_ = "ok " + cifraCredenziale(chiaveInvito_, reinterpret_cast<const uint8_t*>(abSfida_.data()),
+                                               reinterpret_cast<const uint8_t*>(abNonce_.data()), campi[2], segreto);
+        hal_.log(0, "Phone paired");
+      } else {
+        esitoAbBle_ = "no";
+      }
+      chiudiFinestraBle();                                 // l'invito vale una volta sola, comunque sia andata
+    }
   } else if (tipo == "AE") {
     int64_t seq;
     if (!campi.empty() && parseInt(campi[0], seq)) confermaEvento(seq);
@@ -294,6 +405,11 @@ void Slave::gestisciCache(const uint8_t* dati, size_t n) {
   if (deserializeJson(doc, reinterpret_cast<const char*>(dati), lunghezzaJson)) return;
   JsonObjectConst o = doc.as<JsonObjectConst>();
   if (int64_t(o["varco_id"] | int64_t(-1)) != int64_t(id_)) return;
+
+  // Solo cache piu' nuove di quella in uso: una cache vecchia rimandata (replay) farebbe tornare validi
+  // i badge revocati e riporterebbe indietro l'orologio. Il master fa crescere sempre la versione.
+  int64_t versioneArrivata = o["versione"] | int64_t(0);
+  if (cache_.versione && versioneArrivata <= cache_.versione) return;
 
   Pezzo pezzo;
   leggiPezzo(o, pezzo);
@@ -344,6 +460,26 @@ void Slave::applicaCache(const Assemblaggio& a) {
   cache_ = nuova;                                      // sostituzione in un colpo solo, mai a meta'
   cacheRicevuta_ = true; cacheFresca_ = true;
   if (meta["ora"].is<double>()) { deriva_ = int64_t(meta["ora"].as<double>()) - hal_.unixTime(); sincronizzato_ = true; }
+  // Chiave dei telefoni: "kt" = chiave XOR HMAC(chiave del varco, "PHONE-KEY|id|versione"). Assente = nessun telefono.
+  {
+    const char* kt = meta["kt"] | "";
+    std::string nuovaKt;
+    if (strlen(kt) == 64) {
+      uint8_t pad[32];
+      std::string base = "PHONE-KEY|" + std::to_string(id_) + "|" + std::to_string(cache_.versione);
+      hmacSha256(chiave_, reinterpret_cast<const uint8_t*>(base.data()), base.size(), pad);
+      nuovaKt.assign(32, '\0');
+      for (int i = 0; i < 32; i++) {
+        int alto = esaCifra(kt[2 * i]), basso = esaCifra(kt[2 * i + 1]);
+        if (alto < 0 || basso < 0) { nuovaKt.clear(); break; }
+        nuovaKt[i] = char(uint8_t(alto * 16 + basso) ^ pad[i]);
+      }
+    }
+    if (nuovaKt != chiaveTelefoni_) {
+      chiaveTelefoni_ = nuovaKt;
+      hal_.save("telefoni", esadecimale(reinterpret_cast<const uint8_t*>(chiaveTelefoni_.data()), chiaveTelefoni_.size()) + "\n");
+    }
+  }
   if (cache_.modo != 'n') hal_.log(1, std::string("Gate mode: ") + cache_.modo + " (e=emergency, m=maintenance, s=scheduled unlock)");
   hal_.log(0, "Cache updated by the master: " + std::to_string(cache_.voci.size()) + " credentials");
   salvaCache();
@@ -644,6 +780,8 @@ void Slave::loop() {
   aggiornaRelay();
   if (now - ultimoCampione_ >= 100) { ultimoCampione_ = now; campionaIngressi(); }
   if (now - ultimoTick_ >= 1000) { ultimoTick_ = now; tickUscite(); }
+  // Richiesta di abbinamento senza risposta: un pacchetto UDP puo' perdersi, si ripete (il master risponde uguale).
+  if (abTentativi_ > 0 && abTentativi_ < 3 && esitoAbBle_.empty() && finestraBleAperta() && now - abInviatoAlle_ >= 1500) mandaAbbinamentoBle();
   if (primoBattito_ || now - ultimoBattito_ >= uint64_t(intervalloBattitoMs_)) {
     primoBattito_ = false; ultimoBattito_ = now;
     mandaBattito();

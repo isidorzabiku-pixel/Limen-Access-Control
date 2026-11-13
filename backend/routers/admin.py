@@ -31,7 +31,7 @@ from models import (
 from services.logger import registra_log
 from services.system_info import raccogli_info_sistema
 from services import lingua as lingua_service
-from services import udp_agent, connessioni, log_codici, backup as backup_service, api_accesso
+from services import ble_abbinamento, ble_inviti, udp_agent, connessioni, log_codici, backup as backup_service, api_accesso
 from services.avvio import AVVIATO_IL
 from services import modifiche, tempo, presenza, impostazioni, manutenzione, salute, funzionamento as funz_service
 from services import presenze as presenze_service, permessi as permessi_service, credenziali as cred_service
@@ -112,6 +112,7 @@ def _calcola_stato_online(varchi):
     for v in varchi:
         candidati = [d for d in (v.ultimo_heartbeat, presenza.ultimo_contatto(v.id)) if d is not None]
         v.ultimo_contatto = max(candidati) if candidati else None
+        v.firmware = presenza.firmware(v.id)
         v.online = bool(
             v.ultimo_contatto and (now - v.ultimo_contatto) < timedelta(seconds=SOGLIA_OFFLINE_SEC)
         )
@@ -165,7 +166,8 @@ def _titolo_allarme(e: Evento) -> str:
     return f"{etichetta}: {nome}"
 
 
-def _calcola_alert(db: Session):
+def _calcola_alert(db: Session, con_avvisi: bool = False):
+    # con_avvisi: anche gli avvisi che non chiedono un'azione (telefoni abbinati nelle ultime 24 ore); solo nella pagina Alert.
     """Alert di sistema calcolati al volo (nessuna tabella dedicata):
     dispositivi offline + allarmi degli ultimi SCADENZA_ALLARMI_ORE non ancora
     presi in carico (es. violazione anti-passback). Gli offline si risolvono da
@@ -193,6 +195,7 @@ def _calcola_alert(db: Session):
                 "titolo": t("In attesa del dispositivo: %(nome)s", nome=v.nome) if mai_visto else t("Dispositivo offline: %(nome)s", nome=v.nome),
                 "descrizione": descrizione,
                 "timestamp": v.ultimo_contatto,
+                "senza_ora": True,          # l'ultimo contatto e' gia' nella descrizione
                 "evento_id": None,
             })
         if v.modalita == "emergenza":
@@ -213,7 +216,7 @@ def _calcola_alert(db: Session):
             alert.append({
                 "livello": "warning",
                 "titolo": t("Invio dati non confermato: %(nome)s", nome=v.nome),
-                "descrizione": t("Il dispositivo e' online ma non ha confermato l'ultimo invio dei dati. Prova a premere \"Scarica dati\"."),
+                "descrizione": t("Il dispositivo e' online ma non ha confermato l'ultimo invio dei dati. Prova a premere \"Invia dati\"."),
                 "timestamp": None,
                 "evento_id": None,
             })
@@ -222,7 +225,7 @@ def _calcola_alert(db: Session):
                 "livello": "warning",
                 "titolo": t("Orologio sballato: %(nome)s", nome=v.nome),
                 "descrizione": (
-                    t("L'orologio del dispositivo e' %(p)s rispetto al master. Premi \"Scarica dati\": con la cache riceve l'ora corretta e il fuso orario.", p=descrivi_deriva(v.deriva_sec))
+                    t("L'orologio del dispositivo e' %(p)s rispetto al master. Premi \"Invia dati\": con la cache riceve l'ora corretta e il fuso orario.", p=descrivi_deriva(v.deriva_sec))
                 ),
                 "timestamp": None,
                 "evento_id": None,
@@ -242,9 +245,20 @@ def _calcola_alert(db: Session):
         alert.append({
             "livello": "warning",
             "titolo": _titolo_allarme(e),
-            "descrizione": etichetta + chi,
+            "descrizione": chi.lstrip(" ·") if etichetta in _titolo_allarme(e) else etichetta + chi,
             "timestamp": e.timestamp,
             "evento_id": e.id,
+        })
+
+    for r in (ble_inviti.abbinati_di_recente(db) if con_avvisi else []):
+        pers = db.get(Persona, r.persona_id)
+        varco_r = db.get(Varco, r.varco_id) if r.varco_id else None
+        alert.append({
+            "livello": "info",
+            "titolo": t("Telefono abbinato: %(nome)s", nome=f"{pers.nome} {pers.cognome}" if pers else "?"),
+            "descrizione": t("Dal varco %(varco)s · titolo %(imp)s…", varco=varco_r.nome if varco_r else "?", imp=r.impronta[:8]),
+            "timestamp": r.creata_il,
+            "evento_id": None,
         })
 
     alert.sort(key=lambda a: a["timestamp"] or datetime.min, reverse=True)
@@ -440,6 +454,8 @@ def _pagina_persone(request: Request, db: Session, visitatori: bool):
             "tipi_cred": [(t, cred_service.ETICHETTE[t]) for t in cred_service.ORDINE],
             "suggerimenti_cred": cred_service.SUGGERIMENTI,
             "sconosciute": credenziali_sconosciute_recenti(db),
+            "invito_ble": prendi_invito_da_mostrare(user, persona_aperta.id) if persona_aperta else None,
+            "varchi_ble": db.query(Varco).order_by(Varco.nome).all() if persona_aperta else [],
             "tutte_le_persone": [(p.id, f"{p.cognome} {p.nome}") for p in persone] if not ricerca else [
                 (p.id, f"{p.cognome} {p.nome}") for p in db.query(Persona).filter(Persona.ospite == visitatori).order_by(Persona.cognome, Persona.nome).all()
             ],
@@ -461,6 +477,8 @@ def crea_persona(
     """Crea una persona. Con `codice` associa subito il primo badge. I visitatori hanno la loro pagina (/visitatori)."""
     require_login(request, db)
     codice = codice.strip()
+    if cred_service.sembra_impronta_ble(codice):
+        return RedirectResponse("/persone?errore=impronta_ble", status_code=303)
     if codice and db.query(AccessMedia).filter(AccessMedia.codice == codice).first() is not None:
         return RedirectResponse("/persone?errore=badge_duplicato", status_code=303)
     p = Persona(nome=nome, cognome=cognome, email=email or None)
@@ -496,6 +514,8 @@ def crea_visitatore(
         return RedirectResponse("/visitatori?errore=scadenza", status_code=303)
     if da is not None and a < da:
         return RedirectResponse("/visitatori?errore=validita_invertita", status_code=303)
+    if cred_service.sembra_impronta_ble(codice):
+        return RedirectResponse("/visitatori?errore=impronta_ble", status_code=303)
     if codice and db.query(AccessMedia).filter(AccessMedia.codice == codice).first() is not None:
         return RedirectResponse("/visitatori?errore=badge_duplicato", status_code=303)
     p = Persona(nome=nome, cognome=cognome, ospite=True, valido_da=da, valido_a=a)
@@ -554,7 +574,7 @@ def cambia_attivo_persona(request: Request, persona_id: int, db: Session = Depen
     """Sospende / riattiva una persona senza cancellarla: i suoi badge restano
     associati e lo storico dei passaggi mantiene il nome, ma finché è sospesa
     nessuno dei suoi badge apre un varco (la cache mandata agli slave la esclude:
-    serve "Scarica dati ai dispositivi" perche' la modifica arrivi ai varchi)."""
+    serve "Invia dati ai dispositivi" perche' la modifica arrivi ai varchi)."""
     user = require_login(request, db)
     p = db.query(Persona).filter(Persona.id == persona_id).first()
     if p:
@@ -636,6 +656,24 @@ async def aggiorna_gruppi_persona(request: Request, persona_id: int, db: Session
     return RedirectResponse(f"{_base_persona(db, persona_id)}?apri={persona_id}", status_code=303)
 
 
+@router.post("/persone/{persona_id}/accessi")
+async def aggiorna_accessi_persona(request: Request, persona_id: int, db: Session = Depends(get_db)):
+    """Gruppi e regole dirette insieme: un solo «Salva» nella scheda Accessi (prima erano due, e se ne perdeva uno)."""
+    require_login(request, db)
+    form = await request.form()
+    id_gruppi = [int(v) for v in form.getlist("gruppo_id")]
+    id_regole = [int(v) for v in form.getlist("policy_id")]
+    p = db.query(Persona).filter(Persona.id == persona_id).first()
+    if p:
+        p.gruppi = db.query(Gruppo).filter(Gruppo.id.in_(id_gruppi)).all() if id_gruppi else []
+        p.policy_dirette = db.query(Policy).filter(Policy.id.in_(id_regole)).all() if id_regole else []
+        db.commit()
+        nomi = ", ".join(g.nome for g in p.gruppi) or "nessuno"
+        registra_log(db, t("Gruppi di %(nome)s %(cognome)s aggiornati: %(nomi)s", nome=p.nome, cognome=p.cognome, nomi=nomi), categoria="persone")
+        registra_log(db, t("Regole dirette di %(nome)s %(cognome)s aggiornate", nome=p.nome, cognome=p.cognome), categoria="persone")
+    return RedirectResponse(f"{_base_persona(db, persona_id)}?apri={persona_id}&salvato=1", status_code=303)
+
+
 @router.post("/persone/{persona_id}/policy")
 async def aggiorna_policy_persona(request: Request, persona_id: int, db: Session = Depends(get_db)):
     """Imposta le regole dirette di una persona (oltre a quelle dei suoi gruppi)."""
@@ -703,10 +741,15 @@ def aggiungi_media(
     require_login(request, db)
     codice = codice.strip()
     tipo_media = cred_service.tipo_valido(tipo)
+    if tipo_media == TipoMedia.ble:
+        # La credenziale del telefono nasce solo dall'abbinamento (invito dell'admin + abbinamento dal telefono), mai a mano.
+        return RedirectResponse(f"{_base_persona(db, persona_id)}?apri={persona_id}&scheda=titoli", status_code=303)
     if not codice:
         return RedirectResponse(f"{_base_persona(db, persona_id)}?apri={persona_id}&scheda=titoli&errore=badge_vuoto", status_code=303)
     if tipo_media == TipoMedia.pin and not cred_service.PIN_VALIDO.match(codice):
         return RedirectResponse(f"{_base_persona(db, persona_id)}?apri={persona_id}&scheda=titoli&errore=pin_non_valido", status_code=303)
+    if cred_service.sembra_impronta_ble(codice):
+        return RedirectResponse(f"{_base_persona(db, persona_id)}?apri={persona_id}&scheda=titoli&errore=impronta_ble", status_code=303)
     esistente = db.query(AccessMedia).filter(AccessMedia.codice == codice).first()
     if esistente is not None:
         return RedirectResponse(f"{_base_persona(db, persona_id)}?apri={persona_id}&scheda=titoli&errore=badge_duplicato", status_code=303)
@@ -731,9 +774,9 @@ def aggiungi_media(
 
 def _manda_cache_dopo_revoca(db: Session) -> None:
     """Disattivare o eliminare un titolo toglie un accesso: ai varchi deve arrivare subito, senza aspettare
-    «Scarica dati» ne' le 6 ore. Un errore non blocca l'azione (resta il «Scarica dati» a mano)."""
+    «Invia dati» ne' le 6 ore. Un errore non blocca l'azione (resta il «Invia dati» a mano)."""
     try:
-        udp_agent.invia_cache(db)
+        udp_agent.invia_cache_finche_confermata(db)     # ripetuta finche' ogni varco online la conferma
     except Exception:
         logger.exception("Cache non inviata dopo la revoca di un titolo di accesso")
 
@@ -1036,7 +1079,7 @@ def salva_funzionamento(
     `dati` e' il JSON costruito dal popup: si controlla tutto lato server (mai fidarsi
     del browser). Il popup porta anche la modalita' di funzionamento: se cambia, la cache va subito
     al dispositivo; in Manutenzione ed Emergenza uscite e ingressi sono bloccati e non si toccano.
-    Il resto arriva al dispositivo con la prossima cache ("Scarica dati")."""
+    Il resto arriva al dispositivo con la prossima cache ("Invia dati")."""
     user = require_login(request, db)
     v = db.query(Varco).filter(Varco.id == varco_id).first()
     if v is None:
@@ -1132,7 +1175,7 @@ def aggiorna_ip_varco(
     e per coerenza anche i report/heartbeat dello slave vengono accettati
     solo se arrivano da questo IP (vedi services/udp_agent.py).
     """
-    require_login(request, db)
+    require_admin(request, db)      # cambiare l'IP sposta il varco su un altro dispositivo: solo admin
     v = db.query(Varco).filter(Varco.id == varco_id).first()
     ip = ip_address.strip()
     if ip and not _ip_valido(ip):
@@ -1145,7 +1188,7 @@ def aggiorna_ip_varco(
         registra_log(
             db, t("IP del varco '%(nome)s' impostato a %(p)s", nome=v.nome, p=v.ip_address or t('(nessuno)')), categoria="varchi",
         )
-    return RedirectResponse("/varchi", status_code=303)
+    return RedirectResponse(f"/varchi?apri={varco_id}&scheda=dispositivo", status_code=303)
 
 
 @router.post("/varchi/{varco_id}/rigenera-api-key")
@@ -1230,7 +1273,7 @@ def cambia_attivo_varco(request: Request, varco_id: int, db: Session = Depends(g
     # vecchia fino al prossimo invio (giro automatico ogni 6h o "Scarica
     # dati"): per una chiusura di emergenza non basta. Come per il cambio di
     # modalità (routers/modalita.py), manda subito la cache di QUESTO varco
-    # soltanto e aspetta la conferma CA come fa "Scarica dati".
+    # soltanto e aspetta la conferma CA come fa "Invia dati".
     try:
         mandati = udp_agent.invia_cache(db, solo_varco_id=v.id)
         confermato = bool(mandati) and all(udp_agent.attendi_conferme_cache(mandati, timeout_sec=2.0).values())
@@ -1248,7 +1291,7 @@ def cambia_attivo_varco(request: Request, varco_id: int, db: Session = Depends(g
 @router.post("/varchi/scarica-dati")
 def scarica_dati_varchi(request: Request, redirect_to: str = Form("/varchi"), db: Session = Depends(get_db)):
     """
-    Bottone 'Scarica dati ai dispositivi': manda subito (non aspetta le 6h)
+    Bottone 'Invia dati ai dispositivi': manda subito (non aspetta le 6h)
     la cache di autorizzazioni a tutti i varchi via UDP (unicast a ciascuno), poi
     aspetta fino a 2s la conferma di consegna reale (pacchetto CA mandato
     dallo slave dopo aver elaborato la cache) prima di rispondere — un
@@ -1688,7 +1731,7 @@ def _varchi_scelti(db: Session, ids: list[str]) -> list[Varco]:
 @router.post("/policy/{policy_id}/modifica")
 async def modifica_policy(request: Request, policy_id: int, db: Session = Depends(get_db)):
     """Cambia nome, varchi, fascia oraria e stato (attiva/disattiva) di una regola. Vale subito per tutti
-    quelli che la usano (persone e gruppi); ai varchi arriva con «Scarica dati» (il banner lo ricorda)."""
+    quelli che la usano (persone e gruppi); ai varchi arriva con «Invia dati» (il banner lo ricorda)."""
     require_login(request, db)
     form = await request.form()
     p = db.query(Policy).filter(Policy.id == policy_id).first()
@@ -1754,7 +1797,7 @@ def elimina_policy(request: Request, policy_id: int, db: Session = Depends(get_d
 @router.get("/alert", response_class=HTMLResponse)
 def pagina_alert(request: Request, db: Session = Depends(get_db)):
     user = require_login(request, db)
-    alert = _calcola_alert(db)
+    alert = _calcola_alert(db, con_avvisi=True)
     return templates.TemplateResponse(
         "alert.html",
         {
@@ -1797,6 +1840,41 @@ def gestisci_tutti_alert(request: Request, db: Session = Depends(get_db)):
     if aperti:
         registra_log(db, t("%(p)s allarmi presi in carico da %(username)s", p=len(aperti), username=user.username), categoria="alert")
     return RedirectResponse("/alert", status_code=303)
+
+
+# ---------- Abbinamento del telefono (credenziale BLE) ----------
+# L'invito si mostra una sola volta: resta in memoria, per utente, fino alla prima visualizzazione.
+_inviti_da_mostrare: dict[tuple[str, int], tuple[str, str, float]] = {}
+
+
+def prendi_invito_da_mostrare(user, persona_id: int) -> Optional[dict]:
+    voce = _inviti_da_mostrare.pop((user.username, persona_id), None)
+    if voce and time_module.monotonic() - voce[2] < ble_abbinamento.SCADENZA_INVITO_SEC:
+        return {"codice": voce[0], "varco": voce[1]}
+    return None
+
+
+@router.post("/persone/{persona_id}/invito-ble")
+def crea_invito_ble(request: Request, persona_id: int, varco_id: int = Form(...), db: Session = Depends(get_db)):
+    """Invito per abbinare un telefono: vale per questa persona, su questo varco, 10 minuti, una volta.
+    La finestra sul varco si apre subito; se il dispositivo non risponde l'invito non nasce."""
+    user = require_admin(request, db)
+    p = db.get(Persona, persona_id)
+    v = db.get(Varco, varco_id)
+    base = f"{_base_persona(db, persona_id)}?apri={persona_id}&scheda=titoli" if p else "/persone"
+    if p is None or v is None:
+        return RedirectResponse(base, status_code=303)
+    _calcola_stato_online([v])
+    if not v.online:
+        return RedirectResponse(f"{base}&errore=varco_offline", status_code=303)
+    codice, chiave, kid = ble_inviti.crea_invito(db, persona_id, varco_id)
+    udp_agent.invia_cache(db, varco_id)       # porta al dispositivo la chiave dei telefoni, se non l'ha ancora
+    if not udp_agent.apri_finestra_abbinamento(v, ble_abbinamento.SCADENZA_INVITO_SEC, kid, chiave):
+        ble_inviti.annulla_invito(db, kid)
+        return RedirectResponse(f"{base}&errore=varco_offline", status_code=303)
+    _inviti_da_mostrare[(user.username, persona_id)] = (codice, v.nome, time_module.monotonic())
+    registra_log(db, t("Invito per abbinare un telefono creato per %(nome)s sul varco '%(varco)s' da %(username)s", nome=f"{p.nome} {p.cognome}", varco=v.nome, username=user.username), categoria="persone")
+    return RedirectResponse(base, status_code=303)
 
 
 @router.get("/alert/count", response_class=HTMLResponse)
@@ -2137,6 +2215,7 @@ def pagina_sistema(request: Request, db: Session = Depends(get_db)):
         {
             "request": request, "user": user, "utenti": utenti, "numero_admin": numero_admin,
             "stato_udp": udp_agent.stato(),
+            "telefoni_ble": ble_inviti.conta_telefoni(db),
             "varchi_totali": len(varchi), "varchi_online": sum(1 for v in varchi if v.online),
             "da_quando_attivo": _durata_leggibile(datetime.utcnow() - AVVIATO_IL),
             "righe_log_totali": righe_log_totali, "righe_log_pulibili": righe_log_pulibili,
@@ -2256,6 +2335,18 @@ def _riavvia_dopo_risposta():
     # ma più lentamente — qui vogliamo che systemd lo rialzi il prima possibile).
     time_module.sleep(0.6)
     os._exit(0)
+
+
+@router.post("/sistema/telefoni/rigenera")
+def rigenera_chiave_telefoni(request: Request, db: Session = Depends(get_db)):
+    """Chiave dei telefoni nuova, per esempio dopo il furto di un dispositivo: i titoli dei telefoni si eliminano
+    (i loro segreti derivano dalla chiave vecchia) e i telefoni vanno abbinati di nuovo. I badge non cambiano."""
+    user = require_admin(request, db)
+    quanti = ble_inviti.rigenera_chiave_telefoni(db)
+    registra_log(db, t("Chiave dei telefoni rigenerata da %(username)s: %(n)s telefoni da abbinare di nuovo", username=user.username, n=quanti),
+                 livello="warning", categoria="sistema")
+    _manda_cache_dopo_revoca(db)              # la chiave nuova e i titoli tolti arrivano subito ai varchi
+    return RedirectResponse("/sistema?telefoni=1", status_code=303)
 
 
 @router.post("/sistema/riavvia")

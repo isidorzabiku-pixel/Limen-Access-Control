@@ -61,7 +61,7 @@
           <div class="azioni-modifica">
             <button type="submit">{{ t("Salva") }}</button>
             <a class="button ghost" href="/policy">{{ t("Annulla") }}</a>
-            {% call aiuto() %}{{ t("Vale subito per %(p1)s persone e %(p2)s gruppi; ai varchi dopo «Scarica dati». «Disattiva» la sospende senza eliminarla.", p1=p.persone|length, p2=p.gruppi|length) }}{% endcall %}
+            {% call aiuto() %}{{ t("Vale subito per %(p1)s persone e %(p2)s gruppi; ai varchi dopo «Invia dati». «Disattiva» la sospende senza eliminarla.", p1=p.persone|length, p2=p.gruppi|length) }}{% endcall %}
           </div>
         </form>
       </td>

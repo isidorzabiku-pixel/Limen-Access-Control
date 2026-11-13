@@ -13,7 +13,7 @@
 #}
 <div id="varchi-live" hx-get="/varchi/stato-live" hx-trigger="every 4s [pollingLibero(this)]" hx-swap="outerHTML">
   <table class="tabella-card" id="varchi-table">
-    <tr><th>{{ t("Varco") }}</th><th>{{ t("Stato") }}</th><th>{{ t("IP (canale UDP)") }}</th><th>{{ t("Ultimo heartbeat") }}</th><th></th><th></th></tr>
+    <tr><th>{{ t("Varco") }}</th><th>{{ t("Stato") }}</th><th>{{ t("Indirizzo IP") }}</th><th>{{ t("Ultimo heartbeat") }}</th><th></th><th></th></tr>
     {% for v in varchi %}
     <tr class="riga-varco" onclick="if(!event.target.closest('form,button,input,a'))location.href='/varchi?apri={{ v.id }}'">
       <td>
@@ -44,17 +44,12 @@
         </span>
         {% endif %}
       </td>
-      <td data-label="IP (canale UDP)">
-        <form class="inline" method="post" action="/varchi/{{ v.id }}/ip" style="display:flex; gap:0.4rem;">
-          <input type="text" name="ip_address" value="{{ v.ip_address or '' }}" placeholder="{{ t('es. 192.168.1.50') }}" style="width:11rem;">
-          <button type="submit">{{ t("Salva") }}</button>
-        </form>
-      </td>
+      <td data-label="{{ t('Indirizzo IP') }}">{% if v.ip_address %}<span class="mono">{{ v.ip_address }}</span>{% else %}<span class="muted">{{ t("non impostato") }}</span>{% endif %}</td>
       <td data-label="Ultimo heartbeat">{{ v.ultimo_contatto|ora }}</td>
       <td>
         <form class="inline" method="post" action="/varchi/{{ v.id }}/apri">
           <input type="hidden" name="redirect_to" value="/varchi">
-          <button type="submit" {% if not v.attivo %}disabled title="{{ t('Varco disattivato: riattivalo per poterlo aprire') }}"{% endif %}>{{ t("Apri") }}</button>
+          <button type="submit" {% if not v.attivo %}disabled title="{{ t('Varco disattivato: riattivalo per poterlo aprire') }}"{% elif not v.online %}disabled title="{{ t('Dispositivo offline: il comando non arriverebbe') }}"{% endif %}>{{ t("Apri") }}</button>
         </form>
       </td>
       <td style="text-align:right"><span class="riga-apri">&rsaquo;</span></td>

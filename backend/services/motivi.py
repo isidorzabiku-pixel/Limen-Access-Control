@@ -15,7 +15,7 @@ nello storico anche se poi la configurazione cambia:
   - nessuna regola: non e' in nessun gruppo e non ha permessi diretti (o i suoi gruppi sono vuoti)
   - non autorizzata su questo varco: ha regole, ma per altri varchi
   - regola disattivata: la regola per questo varco c'e' ma e' spenta
-  - dati non aggiornati: ha un permesso valido, ma lo slave non lo sa ancora («Scarica dati»)
+  - dati non aggiornati: ha un permesso valido, ma lo slave non lo sa ancora («Invia dati»)
 
 Funziona anche con gli slave gia' installati: non cambia il protocollo.
 """
@@ -91,8 +91,8 @@ def raffina_sconosciuta(db: Session, varco: Varco, media: AccessMedia, istante: 
 
     # Ha un permesso attivo qui, eppure lo slave non lo conosce: cache vecchia o non applicata.
     if varco.nome in modifiche.stato_dati(db)["da_inviare"]:
-        return EsitoEvento.negato_dati_non_aggiornati, t("Ha un permesso valido, ma i dati di questo varco non sono aggiornati: premi «Scarica dati»")
-    return EsitoEvento.negato_dati_non_aggiornati, t("Ha un permesso valido, ma il dispositivo non lo conosce (cache non applicata?): premi «Scarica dati»")
+        return EsitoEvento.negato_dati_non_aggiornati, t("Ha un permesso valido, ma i dati di questo varco non sono aggiornati: premi «Invia dati»")
+    return EsitoEvento.negato_dati_non_aggiornati, t("Ha un permesso valido, ma il dispositivo non lo conosce (cache non applicata?): premi «Invia dati»")
 
 
 def dettaglio_esito(persona: Persona, varco: Varco, media: Optional[AccessMedia], esito: EsitoEvento) -> Optional[str]:

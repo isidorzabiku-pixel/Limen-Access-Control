@@ -4,7 +4,7 @@
   <td data-label="Data/ora" style="white-space:nowrap">{{ e.timestamp|ora }}</td>
   <td data-label="Varco">{{ e.varco.nome if e.varco else (e.varco_nome or '—') }}</td>
   <td data-label="Persona">{{ (e.persona.nome + ' ' + e.persona.cognome) if e.persona else '—' }}</td>
-  <td data-label="Credenziale"><code>{{ e.media_codice or '—' }}</code></td>
+  <td data-label="Credenziale">{% if e.media_codice is telefono %}<span class="badge info">{{ t("BLE") }}</span>{% else %}<code>{{ e.media_codice or '—' }}</code>{% endif %}</td>
   <td data-label="Esito">
     <span class="badge {{ classe }}"{% if e.dettaglio %} title="{{ e.dettaglio }}"{% endif %}>{{ etichetta }}</span>
     {% if e.allarme %}<span class="badge err" style="margin-left:0.3rem">{{ t("Allarme") }}</span>{% endif %}

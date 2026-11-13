@@ -19,6 +19,10 @@
 <div class="flash-banner err" role="alert">
   {{ t("Questo codice badge è già associato a un'altra credenziale (o alla stessa persona): ogni badge può appartenere a una sola persona.") }}
 </div>
+{% elif errore_persone == 'varco_offline' %}
+<div class="flash-banner err" role="alert">{{ t("Il dispositivo del varco non risponde: l'invito non è stato creato. Riprova quando è online.") }}</div>
+{% elif errore_persone == 'impronta_ble' %}
+<div class="flash-banner err" role="alert">{{ t("Questo codice è riservato ai telefoni: si abbina dall'app con un invito, non si assegna come badge.") }}</div>
 {% elif errore_persone == 'scadenza' %}
 <div class="flash-banner err" role="alert">{{ t("Indica fino a quando il visitatore può entrare: la scadenza è obbligatoria.") }}</div>
 {% elif errore_persone == 'validita_invertita' %}
@@ -142,7 +146,15 @@
 
 {% if sconosciute %}
 <div class="card" id="sconosciute">
-  <h2 style="margin:0 0 0.7rem; font-size:1rem">{{ t("Credenziali lette e non riconosciute") }}{% call aiuto() %}{{ t("Badge letti ai varchi ma non assegnati. Assegnali a una persona o premi «Ignora».") }}{% endcall %}</h2>
+  <div style="display:flex; align-items:center; justify-content:space-between; gap:0.75rem; flex-wrap:wrap; margin-bottom:0.7rem">
+  <h2 style="margin:0; font-size:1rem">{{ t("Credenziali lette e non riconosciute") }}{% call aiuto() %}{{ t("Badge letti ai varchi ma non assegnati. Assegnali a una persona o premi «Ignora».") }}{% endcall %}</h2>
+  {% if sconosciute|length > 1 %}
+  <form method="post" action="/media/ignora-tutte" style="margin:0">
+    <input type="hidden" name="redirect_to" value="{{ base }}">
+    <button type="submit" class="ghost">{{ t("Ignora tutte") }}</button>
+  </form>
+  {% endif %}
+  </div>
   <div class="sconosciute-lista">
   {% for s in sconosciute %}
     <div class="sconosciuta">
@@ -338,13 +350,13 @@
         {% if persona_aperta.ospite %}<span class="badge warning">{{ t("visitatore") }}</span>{% endif %}
         <form action="/persone/{{ persona_aperta.id }}/attivo" method="post" class="inline">
           <button type="submit" class="ghost"
-                  {% if persona_aperta.attivo %}data-conferma="I badge di {{ persona_aperta.nome }} {{ persona_aperta.cognome }} non apriranno più i varchi (dopo «Scarica dati ai dispositivi»). Restano associati e lo storico non cambia." data-conferma-titolo="{{ t('Sospendere la persona?') }}" data-conferma-impatto="{{ t('Badge che smettono di aprire: %(p1)s', p1=persona_aperta.media|selectattr('attivo')|list|length) }}" data-conferma-azione="{{ t('Sospendi') }}" data-conferma-tono="neutro"{% endif %}>
+                  {% if persona_aperta.attivo %}data-conferma="I badge di {{ persona_aperta.nome }} {{ persona_aperta.cognome }} non apriranno più i varchi (dopo «Invia dati ai dispositivi»). Restano associati e lo storico non cambia." data-conferma-titolo="{{ t('Sospendere la persona?') }}" data-conferma-impatto="{{ t('Badge che smettono di aprire: %(p1)s', p1=persona_aperta.media|selectattr('attivo')|list|length) }}" data-conferma-azione="{{ t('Sospendi') }}" data-conferma-tono="neutro"{% endif %}>
             {{ t('Sospendi') if persona_aperta.attivo else t('Riattiva') }}
           </button>
         </form>
       </div>
       {% if not persona_aperta.attivo %}
-      <p class="muted" style="margin:0.5rem 0 0">{{ t("Sospesa: i badge non aprono i varchi.") }}{% call aiuto() %}{{ t("Vale ai varchi dopo «Scarica dati».") }}{% endcall %}</p>
+      <p class="muted" style="margin:0.5rem 0 0">{{ t("Sospesa: i badge non aprono i varchi.") }}{% call aiuto() %}{{ t("Vale ai varchi dopo «Invia dati».") }}{% endcall %}</p>
       {% endif %}
     </div>
     <a href="{{ base }}" class="drawer-close" aria-label="{{ t('Chiudi') }}">&#10005;</a>
@@ -370,23 +382,20 @@
     </form>
   </div>
   {% endif %}
+  <form action="/persone/{{ persona_aperta.id }}/accessi" method="post">
   <div class="drawer-section">
     <h3>{{ t("Gruppi") }}</h3>
-    <form action="/persone/{{ persona_aperta.id }}/gruppi" method="post">
       {{ tag_picker('gruppo_id', gruppi_selezionati, gruppi_disponibili_picker,
            t('Nessun gruppo disponibile: vai su "Gruppi" per crearne uno.')) }}
-      <button type="submit" style="margin-top:0.6rem">{{ t("Salva gruppi") }}</button>
-    </form>
   </div>
 
   <div class="drawer-section">
     <h3>{{ t("Regole dirette") }}{% call aiuto() %}{{ t("Regole solo per questa persona, oltre a quelle dei gruppi.") }}{% endcall %}</h3>
-    <form action="/persone/{{ persona_aperta.id }}/policy" method="post">
       {{ tag_picker('policy_id', policy_selezionate, policy_disponibili_picker,
            t('Nessuna regola disponibile: creane una in "Regole di accesso".')) }}
-      <button type="submit" style="margin-top:0.6rem">{{ t("Salva regole") }}</button>
-    </form>
+      <div class="salva-riga"><button type="submit">{{ t("Salva") }}</button>{% if request.query_params.get('salvato') %}<span class="muted" role="status">{{ t("Salvato.") }}</span>{% endif %}</div>
   </div>
+  </form>
 
   <div class="drawer-section">
     <h3>{{ t("Permessi") }}{% call aiuto() %}{{ t("Dove può entrare e quando, in sintesi.") }}{% endcall %}</h3>
@@ -424,7 +433,7 @@
       <tr><th>{{ t("Titolo") }}</th><th>{{ t("Stato") }}</th><th></th></tr>
       {% for m in persona_aperta.media %}
       <tr>
-        <td><span class="muted" style="font-size:0.78rem">{{ icona_cred(m.tipo.value) }} {{ dict(tipi_cred).get(m.tipo.value, m.tipo.value) }}</span><br><code>{{ m.codice }}</code></td>
+        <td><span class="muted" style="font-size:0.78rem">{{ icona_cred(m.tipo.value) }} {{ dict(tipi_cred).get(m.tipo.value, m.tipo.value) }}</span><br>{% if m.tipo.value == 'ble' %}<code title="{{ m.codice }}">{{ m.codice[:8] }}…</code>{% else %}<code>{{ m.codice }}</code>{% endif %}</td>
         <td>
           {% if not m.attivo %}<span class="badge err">{{ t("disattivo") }}</span>
           {% elif m.valido_a and m.valido_a < adesso %}<span class="badge err">{{ t("scaduto") }}</span>
@@ -437,7 +446,7 @@
           </div>
           {% endif %}
         </td>
-        <td>
+        <td class="azioni-riga">
           <form action="/media/{{ m.id }}/toggle" method="post" class="inline">
             <button type="submit" class="ghost">{{ t('Disattiva') if m.attivo else t('Attiva') }}</button>
           </form>
@@ -456,7 +465,7 @@
             <form action="/media/{{ m.id }}/validita" method="post" style="display:flex; flex-wrap:wrap; gap:0.4rem; align-items:flex-end; margin-top:0.4rem">
               <label class="muted" style="font-size:0.75rem">{{ t("Da") }}<br><input type="datetime-local" name="valido_da" value="{{ m.valido_da|a_input }}"></label>
               <label class="muted" style="font-size:0.75rem">A<br><input type="datetime-local" name="valido_a" value="{{ m.valido_a|a_input }}"></label>
-              <button type="submit" class="ghost">{{ t("Salva") }}</button>{% call aiuto() %}{{ t("Vuoto = nessun limite. Vale ai varchi dopo «Scarica dati».") }}{% endcall %}
+              <button type="submit" class="ghost">{{ t("Salva") }}</button>{% call aiuto() %}{{ t("Vuoto = nessun limite. Vale ai varchi dopo «Invia dati».") }}{% endcall %}
             </form>
           </details>
         </td>
@@ -465,9 +474,12 @@
       <tr><td colspan="3" class="muted">{{ t("Nessun titolo di accesso associato.") }}</td></tr>
       {% endfor %}
     </table>
-    <form action="/persone/{{ persona_aperta.id }}/media" method="post" style="margin-top:0.6rem">
+  </div>
+  <div class="drawer-section">
+    <h3>{{ t("Aggiungi un titolo") }}</h3>
+    <form action="/persone/{{ persona_aperta.id }}/media" method="post" class="form-colonna">
       <select name="tipo" id="nuova-cred-tipo" aria-label="{{ t('Tipo di credenziale') }}" style="margin-bottom:0.4rem">
-        {% for tc, et in tipi_cred %}<option value="{{ tc }}">{{ et }}{{ t(' (numero da tastiera)') if tc == 'pin' }}</option>{% endfor %}
+        {% for tc, et in tipi_cred if tc != 'ble' %}<option value="{{ tc }}">{{ et }}{{ t(' (numero da tastiera)') if tc == 'pin' }}</option>{% endfor %}
       </select>
       <input type="text" name="codice" id="nuova-cred-codice" placeholder="{{ suggerimenti_cred['rfid'] }}" required autocomplete="off">
       <details style="margin:0.4rem 0">
@@ -487,6 +499,22 @@
       })();
     </script>
   </div>
+  {% if user.is_admin and varchi_ble %}
+  <div class="drawer-section invito-ble">
+    <h3>{{ t("Telefono") }}{% call aiuto() %}{{ t("Crea un codice per questa persona: lo scrive nell'app davanti al varco scelto e il telefono diventa un suo titolo.") }}{% endcall %}</h3>
+      {% if invito_ble %}
+      <div class="campo-copia"><code id="invito-ble" class="campo-tecnico invito-codice">{{ invito_ble.codice }}</code>
+        <button type="button" class="ghost" data-copy-target="#invito-ble">{{ t("Copia") }}</button></div>
+      <p class="muted nota-azione">{{ t("Da scrivere nell'app davanti al varco %(varco)s, entro 10 minuti. Si mostra una sola volta.", varco=invito_ble.varco) }}</p>
+      {% endif %}
+      <form action="/persone/{{ persona_aperta.id }}/invito-ble" method="post" class="form-row">
+        <select name="varco_id" required aria-label="{{ t('Varco su cui abbinare il telefono') }}">
+          {% for vb in varchi_ble %}<option value="{{ vb.id }}">{{ vb.nome }}</option>{% endfor %}
+        </select>
+        <button type="submit" class="ghost">{{ t("Invita un telefono") }}</button>
+      </form>
+  </div>
+  {% endif %}
     </section>
   </div>
 </aside>

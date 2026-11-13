@@ -30,9 +30,12 @@ def sez_en(ui, im):
 <h3>Monitoring</h3>
 <p>Every passage at every gate, live. Use {ui("Pause")} to freeze the list. Filter by outcome (All, Granted, Denied, Alarms), by exact outcome, by dates, by gate, or by person or credential. Choosing dates shows the history. {ui("Export CSV")} downloads what you see. The <b>›</b> button on a row opens the details, including the exact reason for a denied access.</p>
 <h3>Alerts</h3>
-<p>Devices that are offline and door alarms (for example a door left open). An alarm stays until someone presses {ui("Take over")}.</p>
+<p>Devices that are offline and door alarms (for example a door left open). An alarm stays until someone presses {ui("Take over")}. A phone paired in the last 24 hours is listed here as a notice.</p>
 <h3>Opening a door by hand</h3>
-<p>On the Dashboard press {ui("Open")} next to the gate, or open the gate in {ui("Gates")} and press {ui("Open now")}. It works only if the gate is online, and opens it once.</p>"""),
+<p>On the Dashboard press {ui("Open")} next to the gate, or open the gate in {ui("Gates")} and press {ui("Open now")}. It works only if the gate is online, and opens it once.</p>
+<h3>Pairing a phone (administrators)</h3>
+<p>A phone is never typed in by hand. In the person's {ui("Access credentials")}, under {ui("Phone")}, choose the gate where the person is standing and press {ui("Invite a phone")}: a code appears once and is valid for 10 minutes, only at that gate. The person types it in the Limen app in front of the gate and presses Pair: the phone shows up in their credentials and works right away, with no further step. Give the code only to that person. A lost phone: delete its credential and invite a new one.</p>
+"""),
         ("Setting up access", f"""
 <p>Access works with <b>rules</b>. A rule says <i>which gates</i> and <i>when</i> (a time window). People receive rules directly or through groups. Five steps, in this order:</p>
 <ol>
@@ -43,7 +46,7 @@ def sez_en(ui, im):
 <li><b>Send data.</b> Press {ui("Send data to devices")}. Changes reach the doors only after this.</li>
 </ol>
 {im("persona", "A person's properties: groups, direct rules and effective permissions.")}
-<div class="note"><b>Unknown badge?</b> A badge read at a gate but not assigned appears in People, under {ui("Credentials read but not recognised")}: press {ui("Assign to…")} and choose the person, or {ui("Ignore")}.</div>
+<div class="note"><b>Unknown badge?</b> A badge read at a gate but not assigned appears in People, under {ui("Credentials read but not recognised")}: press {ui("Assign to…")} and choose the person, or {ui("Ignore")} ({ui("Ignore all")} clears the list). In Monitoring a phone is shown as {ui("BLE")}: its full code is in the passage detail.</div>
 <div class="note"><b>Check before you trust it.</b> {ui("See effective permissions")} in a person's properties shows what that person can really do. A rule with no gate or no time window is marked <i>incomplete</i> and grants nothing.</div>
 {im("policy", "Access rules: gates, time window and status.")}
 <div class="note warn"><b>Do not forget step 5.</b> After any change to people, rules, time windows or gates, press {ui("Send data to devices")}. Gates also receive data automatically every 6 hours, but do not wait for it. The exception is deactivating or deleting a credential, which is sent at once.</div>"""),
@@ -67,7 +70,8 @@ def sez_en(ui, im):
 {im("sistema", "System properties (administrators): backup, restart, data retention, API and users.")}
 <ul>
 <li><b>Users.</b> Create users, make them operator or administrator, reset a password, delete. There must always be at least one administrator.</li>
-<li><b>Backup.</b> {ui("Download backup")} saves a copy of the database. Keep it somewhere safe.</li>
+<li><b>Backup.</b> {ui("Download backup")} saves a copy of the database. Keep it somewhere safe: it contains the keys of the gates and of the phones.</li>
+<li><b>Phone key.</b> If a gate device is stolen, press {ui("Regenerate phone key")}: all phones stop opening and must be invited again. Badges are not affected.</li>
 <li><b>Data retention.</b> How many days passages and log are kept (0 = forever). {ui("Save and apply now")} applies it immediately. Alerts still to be handled are never deleted.</li>
 <li><b>Log cleanup.</b> {ui("Clean")} removes old information lines from the system log; passages and warnings are not touched.</li>
 <li><b>App restart.</b> Works only when the app runs as a service.</li>
@@ -114,7 +118,7 @@ def sez_it(ui, im):
 <ul>
 <li><b>Menu a sinistra.</b> <i>Monitoraggio</i>: Dashboard, Monitoraggio, Alert. <i>Configurazione accessi</i>: Persone, Visitatori, Gruppi, Varchi, Fasce orarie, Regole di accesso. <i>Sistema</i>: Info sistema e Proprietà di sistema.</li>
 <li><b>L'icona ⓘ</b> accanto a un titolo o a un campo dà una spiegazione di una frase: passaci sopra o toccala.</li>
-<li><b>{ui("Scarica dati ai dispositivi")}</b> (in alto a destra) manda le tue modifiche ai varchi. Vedi il punto 5 della sezione 4.</li>
+<li><b>{ui("Invia dati ai dispositivi")}</b> (in alto a destra) manda le tue modifiche ai varchi. Vedi il punto 5 della sezione 4.</li>
 <li><b>{ui("Da fare")}</b> (menu a sinistra) elenca ciò che richiede attenzione: dati da inviare e, per gli amministratori, nuovi dispositivi da abbinare.</li>
 </ul>"""),
         ("Uso quotidiano", f"""
@@ -122,9 +126,12 @@ def sez_it(ui, im):
 <h3>Monitoraggio</h3>
 <p>Ogni passaggio a ogni varco, in diretta. {ui("Pausa")} ferma l'elenco. Filtra per esito (Tutti, Concessi, Negati, Allarmi), per esito preciso, per date, per varco, o per persona o credenziale. Scegliendo le date vedi lo storico. {ui("Esporta CSV")} scarica ciò che vedi. Il pulsante <b>›</b> su una riga apre il dettaglio, con il motivo preciso di un accesso negato.</p>
 <h3>Alert</h3>
-<p>Dispositivi offline e allarmi della porta (per esempio una porta lasciata aperta). Un allarme resta finché qualcuno non preme {ui("Prendi in carico")}.</p>
+<p>Dispositivi offline e allarmi della porta (per esempio una porta lasciata aperta). Un allarme resta finché qualcuno non preme {ui("Prendi in carico")}. Un telefono abbinato nelle ultime 24 ore compare qui come avviso.</p>
 <h3>Aprire una porta a mano</h3>
-<p>Nella Dashboard premi {ui("Apri")} accanto al varco, oppure apri il varco in {ui("Varchi")} e premi {ui("Apri ora")}. Funziona solo se il varco è online, e apre una volta sola.</p>"""),
+<p>Nella Dashboard premi {ui("Apri")} accanto al varco, oppure apri il varco in {ui("Varchi")} e premi {ui("Apri ora")}. Funziona solo se il varco è online, e apre una volta sola.</p>
+<h3>Abbinare un telefono (amministratori)</h3>
+<p>Il telefono non si inserisce mai a mano. Nei {ui("Titoli di accesso")} della persona, sotto {ui("Telefono")}, scegli il varco davanti a cui si trova e premi {ui("Invita un telefono")}: compare un codice, una sola volta, valido 10 minuti e solo su quel varco. La persona lo scrive nell'app Limen davanti al varco e preme Pair: il telefono compare nei suoi titoli e funziona subito, senza altri passaggi. Dai il codice solo a quella persona. Telefono perso: elimina la sua credenziale e invita un telefono nuovo.</p>
+"""),
         ("Configurare gli accessi", f"""
 <p>Gli accessi funzionano con le <b>regole</b>. Una regola dice <i>quali varchi</i> e <i>quando</i> (una fascia oraria). Le persone ricevono le regole direttamente o tramite i gruppi. Cinque passi, in quest'ordine:</p>
 <ol>
@@ -132,13 +139,13 @@ def sez_it(ui, im):
 <li><b>Fasce orarie.</b> {ui("Fasce orarie")} → {ui("Nuova fascia")}: dalle un nome, poi scegli giorni e orari. {ui("Festività →")} elenca i giorni che le fasce impostate per escludere i festivi saltano.</li>
 <li><b>Persone.</b> {ui("Persone")} → {ui("Nuova persona")} → {ui("Aggiungi")}, oppure {ui("Importa da CSV")}. Premi {ui("Proprietà ›")} su una persona per vedere tre schede: {ui("Accessi")} (gruppi e regole dirette), {ui("Titoli di accesso")} (badge, PIN) e {ui("Presenza")}. Per gli ospiti usa {ui("Visitatori")}: hanno una data di fine e dopo perdono l'accesso. In {ui("Titoli di accesso")}, {ui("Disattiva")} ed {ui("Elimina")} hanno effetto subito: i dati vanno ai varchi in automatico.</li>
 <li><b>Gruppi e regole.</b> {ui("Gruppi")} → {ui("Nuovo gruppo")} per raccogliere le persone. {ui("Regole di accesso")} → {ui("Nuova regola")}: scegli uno o più varchi e una fascia oraria (oppure {ui("Sempre (24 ore su 24)")}). Poi aggiungi la regola a un gruppo o a una persona.</li>
-<li><b>Invia i dati.</b> Premi {ui("Scarica dati ai dispositivi")}. Le modifiche arrivano alle porte solo dopo questo passaggio.</li>
+<li><b>Invia i dati.</b> Premi {ui("Invia dati ai dispositivi")}. Le modifiche arrivano alle porte solo dopo questo passaggio.</li>
 </ol>
 {im("persona", "Le proprietà di una persona: gruppi, regole dirette e permessi effettivi.")}
-<div class="note"><b>Badge sconosciuto?</b> Un badge letto a un varco ma non assegnato compare in Persone, sotto {ui("Credenziali lette e non riconosciute")}: premi {ui("Assegna a…")} e scegli la persona, oppure {ui("Ignora")}.</div>
+<div class="note"><b>Badge sconosciuto?</b> Un badge letto a un varco ma non assegnato compare in Persone, sotto {ui("Credenziali lette e non riconosciute")}: premi {ui("Assegna a…")} e scegli la persona, oppure {ui("Ignora")} ({ui("Ignora tutte")} svuota l'elenco). Nel Monitoraggio un telefono compare come {ui("BLE")}: il codice intero è nel dettaglio del passaggio.</div>
 <div class="note"><b>Controlla prima di fidarti.</b> {ui("Vedi permessi effettivi")} nelle proprietà di una persona mostra cosa può fare davvero. Una regola senza varco o senza fascia oraria è segnata come <i>incompleta</i> e non concede nulla.</div>
 {im("policy", "Regole di accesso: varchi, fascia oraria e stato.")}
-<div class="note warn"><b>Non dimenticare il passo 5.</b> Dopo ogni modifica a persone, regole, fasce orarie o varchi, premi {ui("Scarica dati ai dispositivi")}. I varchi ricevono i dati anche in automatico ogni 6 ore, ma non aspettare. Fa eccezione la disattivazione o l'eliminazione di un titolo di accesso, che parte subito.</div>"""),
+<div class="note warn"><b>Non dimenticare il passo 5.</b> Dopo ogni modifica a persone, regole, fasce orarie o varchi, premi {ui("Invia dati ai dispositivi")}. I varchi ricevono i dati anche in automatico ogni 6 ore, ma non aspettare. Fa eccezione la disattivazione o l'eliminazione di un titolo di accesso, che parte subito.</div>"""),
         ("Gestire un varco", f"""
 {im("varco", "Il pannello di un varco: apri ora, funzionamento, stato e ultimi passaggi.")}
 <p>Clicca un varco in {ui("Varchi")} per aprire il suo pannello, con tre schede.</p>
@@ -159,7 +166,8 @@ def sez_it(ui, im):
 {im("sistema", "Proprietà di sistema (amministratori): backup, riavvio, conservazione dei dati, API e utenti.")}
 <ul>
 <li><b>Utenti.</b> Crea utenti, rendili operatori o amministratori, reimposta una password, eliminali. Deve esserci sempre almeno un amministratore.</li>
-<li><b>Backup.</b> {ui("Scarica backup")} salva una copia del database. Tienila al sicuro.</li>
+<li><b>Backup.</b> {ui("Scarica backup")} salva una copia del database. Tienila al sicuro: contiene le chiavi dei varchi e dei telefoni.</li>
+<li><b>Chiave dei telefoni.</b> Se il dispositivo di un varco viene rubato, premi {ui("Rigenera chiave dei telefoni")}: tutti i telefoni smettono di aprire e vanno invitati di nuovo. I badge non cambiano.</li>
 <li><b>Conservazione dei dati.</b> Per quanti giorni si conservano passaggi e log (0 = per sempre). {ui("Salva e applica ora")} la applica subito. Gli alert ancora da gestire non vengono mai eliminati.</li>
 <li><b>Pulizia log.</b> {ui("Pulisci")} elimina le vecchie righe informative del log di sistema; passaggi e avvisi restano.</li>
 <li><b>Riavvio app.</b> Funziona solo se l'app gira come servizio.</li>
@@ -170,7 +178,7 @@ def sez_it(ui, im):
         ("Quando qualcosa non va", f"""
 <table>
 <tr><th>Un varco è offline, o «In attesa del dispositivo»</th><td>Controlla alimentazione e cavo di rete, e l'indirizzo IP nella tabella {ui("Varchi")}. Un dispositivo nuovo richiede {ui("Abbina")} (amministratore).</td></tr>
-<tr><th>Una modifica non funziona alla porta</th><td>Premi {ui("Scarica dati ai dispositivi")}.</td></tr>
+<tr><th>Una modifica non funziona alla porta</th><td>Premi {ui("Invia dati ai dispositivi")}.</td></tr>
 <tr><th>Qualcuno viene negato</th><td>Apri il Monitoraggio, premi <b>›</b> sulla riga: il motivo è spiegato. Vedi la tabella qui sotto.</td></tr>
 <tr><th>Un allarme non se ne va</th><td>Premi {ui("Prendi in carico")} negli Alert. Se la porta è ancora aperta, chiudila prima.</td></tr>
 <tr><th>Password dimenticata</th><td>Un altro amministratore la reimposta in {ui("Proprietà di sistema")} → Utenti.</td></tr></table>
@@ -180,7 +188,7 @@ def sez_it(ui, im):
 <tr><th>Nessuna regola assegnata</th><td>La persona non ha né gruppi né regole dirette.</td></tr>
 <tr><th>Non autorizzato su questo varco</th><td>La persona ha delle regole, ma non per questo varco.</td></tr>
 <tr><th>Regola disattivata</th><td>Attiva la regola in {ui("Regole di accesso")}.</td></tr>
-<tr><th>Dati del varco non aggiornati</th><td>Premi {ui("Scarica dati ai dispositivi")}.</td></tr>
+<tr><th>Dati del varco non aggiornati</th><td>Premi {ui("Invia dati ai dispositivi")}.</td></tr>
 <tr><th>Credenziale disattivata / scaduta o non ancora valida</th><td>Controlla la credenziale nelle proprietà della persona.</td></tr>
 <tr><th>Credenziale non riconosciuta</th><td>Il badge non è assegnato a nessuno: assegnalo in Persone.</td></tr>
 <tr><th>Varco disattivato / in manutenzione</th><td>Controlla lo stato e la modalità del varco.</td></tr>

@@ -25,6 +25,14 @@ SUGGERIMENTI = {
     "qr": pigro("Contenuto del codice QR"),
 }
 PIN_VALIDO = re.compile(r"^\d{4,10}$")
+
+# L'impronta di un telefono (base32 di SHA-256, 23 caratteri) nasce solo dall'abbinamento approvato:
+# un codice cosi' non si assegna ne' si inserisce come badge.
+IMPRONTA_BLE = re.compile(r"^[A-Z2-7]{23}$")
+
+
+def sembra_impronta_ble(codice: str) -> bool:
+    return bool(IMPRONTA_BLE.match((codice or "").strip()))
 MAX_CHIP = 3          # oltre, le altre finiscono in "+N" (tutte visibili nel dettaglio della persona)
 
 
@@ -42,7 +50,8 @@ def chip(m, persona_attiva: bool, adesso: datetime) -> dict:
     spenta = (not m.attivo) or (not persona_attiva) or bool(m.valido_a and m.valido_a < adesso)
     return {
         "tipo": tipo, "etichetta": ETICHETTE.get(tipo, tipo),
-        "codice": "••••" if tipo == "pin" else m.codice, "spenta": spenta,
+        # Il PIN non si legge; del telefono basta l'inizio dell'impronta (il resto non serve a nessuno).
+        "codice": "••••" if tipo == "pin" else (m.codice[:8] + "…" if tipo == "ble" else m.codice), "spenta": spenta,
         "scade": m.valido_a if (m.valido_a and m.valido_a >= adesso) else None,
         "non_ancora": bool(m.valido_da and m.valido_da > adesso),
     }

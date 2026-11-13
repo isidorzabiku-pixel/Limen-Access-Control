@@ -20,7 +20,7 @@
     {% if report.errori %}<span class="badge err">{{ t("%(p1)s righe saltate", p1=report.errori|length) }}</span>{% endif %}
   </div>
   {% if report.creati or report.aggiornati or report.badge %}
-  <p class="muted" style="margin:0 0 0.6rem">{{ t("Per mandare i nuovi badge ai varchi usa \"Scarica dati ai dispositivi\" dalla pagina Varchi.") }}</p>
+  <p class="muted" style="margin:0 0 0.6rem">{{ t("Per mandare i nuovi badge ai varchi usa \"Invia dati ai dispositivi\" dalla pagina Varchi.") }}</p>
   {% endif %}
   {% endif %}
   {% if report.errori %}

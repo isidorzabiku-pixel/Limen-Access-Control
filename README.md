@@ -35,6 +35,10 @@ on any machine you already have.
   an explained reason for every denied access, system health, backup and a detailed diagnostic log.
 - **Per-gate behaviour.** Readers, outputs (door strike, siren, alarm arming) and inputs (door sensor, button, remote) are
   configured from the web app; modes: normal, scheduled unlock, maintenance, emergency.
+- **Phone as a credential.** An Android app opens a gate over Bluetooth LE: the phone answers a fresh
+  challenge with a per-phone secret (HMAC-SHA256), the gate decides locally like for any badge, and an unpaired phone gets
+  nothing but a silent "no". Pairing uses a single-use invite from the web app. Tested on several Android phones. Needs the `esp32s3_blecred` firmware; the
+  phone key is not yet encrypted in the ESP32 flash or in backups. See [`app-android/`](app-android/README.md).
 - **Public REST API** with token authentication, and PDF documentation (see `api/`).
 - **HTTPS everywhere** (self-signed certificate generated on first start, or bring your own).
 - **Italian and English** web interface; each user picks their own language.

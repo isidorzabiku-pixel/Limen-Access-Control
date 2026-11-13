@@ -157,10 +157,10 @@ def controlli_varco(varco: Varco, adesso: Optional[datetime] = None) -> list[dic
                       (t("Apri Varchi"), "/varchi", False)))
     # cache
     if varco.ultima_cache_versione is None:
-        out.append(_c(f"v{varco.id}-cache", t("%(nome)s: dati badge", nome=nome), "warning", t("La cache non e' ancora stata inviata."), (t("Scarica dati"), "/varchi", False)))
+        out.append(_c(f"v{varco.id}-cache", t("%(nome)s: dati badge", nome=nome), "warning", t("La cache non e' ancora stata inviata."), (t("Invia dati"), "/varchi", False)))
     elif varco.ultima_cache_confermata != varco.ultima_cache_versione:
         out.append(_c(f"v{varco.id}-cache", t("%(nome)s: dati badge", nome=nome), "warning" if getattr(varco, "online", False) else "error",
-                      t("L'ultima cache inviata non e' stata confermata dal dispositivo: potrebbe avere dati vecchi."), (t("Scarica dati"), "/varchi", False)))
+                      t("L'ultima cache inviata non e' stata confermata dal dispositivo: potrebbe avere dati vecchi."), (t("Invia dati"), "/varchi", False)))
     else:
         out.append(_c(f"v{varco.id}-cache", t("%(nome)s: dati badge", nome=nome), "ok", t("Cache consegnata e confermata.")))
     # orologio
@@ -168,7 +168,7 @@ def controlli_varco(varco: Varco, adesso: Optional[datetime] = None) -> list[dic
         liv = "ok" if varco.deriva_corretta else "warning"
         out.append(_c(f"v{varco.id}-orologio", t("%(nome)s: orologio", nome=nome), liv,
                       t("Sfasato di %(p)s s", p=format(abs(varco.deriva_sec), ".0f")) + (t(", ma lo slave compensa da solo.") if varco.deriva_corretta else t(": serve riallineare.")),
-                      None if varco.deriva_corretta else (t("Scarica dati"), "/varchi", False)))
+                      None if varco.deriva_corretta else (t("Invia dati"), "/varchi", False)))
     # coda eventi
     coda = presenza.coda(varco.id)
     if coda is not None and coda > 0:
