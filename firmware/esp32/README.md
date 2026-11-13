@@ -95,8 +95,13 @@ credential needs a challenge-response with a per-user key. Tried on a board with
 `pio run -e esp32s3_blecred -t upload` builds the firmware with the phone reader (`src/ble_cred.*`, device name
 `Limen-XXXX`). Each phone has a credential code and a secret received at pairing; to open it answers the reader's
 challenge with an HMAC. An unpaired phone only gets `NO` and leaves no trace. Pairing is started from the master
-(person → Access credentials → Invite a phone). The protocol is described at the top of `src/ble_cred.h`. Not yet
-confirmed on real hardware with the current protocol.
+(person → Access credentials → Invite a phone). The protocol is described at the top of `src/ble_cred.h`. Tested on the
+bench with several Android phones.
+
+A ready-built `limen-esp32s3-blecred-*.bin` is attached to each GitHub Release (check its SHA-256). It is the application
+image only: to update a board already flashed with PlatformIO, run
+`esptool.py --chip esp32s3 write_flash 0x10000 limen-esp32s3-blecred-0.6.0.bin` (default partition table; settings and
+cache in the flash are kept). For a new board use `pio run -e esp32s3_blecred -t upload`.
 
 With nothing wired an input reads "high": from the page you can **force the level** of each input to test the door
 sensor and the button (for an NC contact, pin high = contact open = door open).
