@@ -38,7 +38,7 @@ on any machine you already have.
 - **Phone as a credential.** An Android app opens a gate over Bluetooth LE or by tapping the phone on the NFC reader:
   the phone answers a fresh challenge with a per-phone secret (HMAC-SHA256), the gate decides locally like for any
   badge, and an unpaired phone gets nothing but a silent "no". Pairing uses a single-use invite from the web app.
-  Tested on several Android phones. BLE needs the `esp32s3_blecred` firmware. See [`app-android/`](app-android/README.md).
+  Tested on several Android phones. BLE and NFC are in the standard ESP32 firmware. See [`app-android/`](app-android/README.md).
 - **MIFARE DESFire cards with AES.** The web app writes blank DESFire EV1/EV2/EV3 cards through any reader («Write
   DESFire card»); every card gets its own AES key derived from the site key and its UID (NXP AN10922), the reader checks
   it with mutual authentication, so a copied card or a fake UID does not open. Cards are found by the number printed on

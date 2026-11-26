@@ -37,7 +37,7 @@ con un fornitore: un container su una macchina che hai già.
   pulsante, telecomando) si configurano dalla web app; modalità: normale, sblocco programmato, manutenzione, emergenza.
 - **Il telefono come credenziale.** Un'app Android apre il varco via Bluetooth LE: il telefono risponde a una
   sfida nuova con un segreto proprio (HMAC-SHA256), il varco decide in locale come per un badge, e un telefono non abbinato
-  riceve solo un «no» silenzioso. L'abbinamento usa un invito monouso dalla web app. Provato su diversi telefoni Android. Serve il firmware `esp32s3_blecred`;
+  riceve solo un «no» silenzioso. L'abbinamento usa un invito monouso dalla web app. Provato su diversi telefoni Android. BLE e NFC sono nel firmware standard dell'ESP32;
   la chiave dei telefoni non è ancora cifrata nella flash dell'ESP32 né nei backup. Vedi [`app-android/`](app-android/README.md).
 - **API REST pubblica** con autenticazione a token e documentazione in PDF (vedi `api/`).
 - **HTTPS ovunque** (certificato autofirmato creato al primo avvio, oppure usa il tuo).

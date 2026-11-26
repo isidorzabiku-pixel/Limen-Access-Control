@@ -3,7 +3,7 @@
 > Tested on the bench on several Android phones with the `esp32s3_blecred` firmware (about 1.5 s from tap to relay).
 > Not yet done: encryption of the ESP32 flash and of backups, where the phone key is stored.
 
-The phone as an access credential for Limen gates (ESP32 slave, firmware env `esp32s3_blecred`, `src/ble_cred.*`).
+The phone as an access credential for Limen gates (ESP32 slave, firmware env `esp32s3`, `src/ble_cred.*`).
 
 - **Home**: the gates this phone knows, each with a reachability dot (*Nearby* / *Out of range*, from a light
   Bluetooth scan that runs only while the app is in the foreground) and an **Open** button: one tap connects, answers
