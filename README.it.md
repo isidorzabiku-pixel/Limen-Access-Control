@@ -90,7 +90,7 @@ installer pronto è in programma.
 - **Firmware ESP32** — [`firmware/esp32/`](firmware/esp32/README.md) (in inglese). Nucleo C++ senza dipendenze da Arduino
   (decisione, cache, protocollo, HMAC-SHA256) più il livello per la piattaforma ESP32. Legge badge MIFARE, tessere DESFire e
   telefoni (BLE e NFC) con un PN532 e comanda un relè a contatto pulito e due LED. **Prototipo di lettore tutto-in-uno**
-  (ESP32-S3 + PN532 + relè + alimentazione 12 V, provato al banco): vedi il README del firmware. È prevista una testa
+  (ESP32-S3 + PN532 + relè + alimentazione 12 V, provato al banco): [come è costruito, con foto, componenti e schema](docs/hardware/ALL-IN-ONE-READER.md) (in inglese). È prevista una testa
   lettore RS-485 per un controller separato. L'interfaccia del dispositivo è solo in inglese.
 
 ## Note di sicurezza

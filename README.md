@@ -94,7 +94,7 @@ certificates and the session key live in the `limen-data` volume and survive upd
 - **ESP32 firmware** — [`firmware/esp32/`](firmware/esp32/README.md). C++ core with no Arduino dependency (decision, cache,
   protocol, HMAC-SHA256) plus the ESP32 platform layer. It reads MIFARE badges, DESFire cards and phones (BLE and NFC)
   through a PN532 and drives a dry-contact relay and two LEDs. **All-in-one reader prototype** (ESP32-S3 + PN532 + relay
-  + 12 V supply, bench-tested): see the firmware README. An RS-485 reader head for a separate controller is planned. The
+  + 12 V supply, bench-tested): [how it was built, with photos, parts and wiring](docs/hardware/ALL-IN-ONE-READER.md). An RS-485 reader head for a separate controller is planned. The
   device interface is English-only.
 
 ## Security notes

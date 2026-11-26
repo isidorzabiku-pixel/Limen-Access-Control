@@ -67,6 +67,8 @@ the pin.
 
 ## All-in-one reader prototype (bench-tested 26/11)
 
+Photos, parts list and wiring diagram: [`docs/hardware/ALL-IN-ONE-READER.md`](../../docs/hardware/ALL-IN-ONE-READER.md).
+
 One board that is reader and slave: Freenove ESP32-S3 (8 MB) + PN532 (HSU) + 12 V → 5 V buck + 3 V relay module (dry
 contact COM/NO) + green and red LED. A TTL↔RS-485 module is wired for the future reader head, but there is no RS-485
 driver yet. Same firmware as every other board (`pio run -e esp32s3`); only the pins differ, set on the device page or

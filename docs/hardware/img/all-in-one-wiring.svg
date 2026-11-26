@@ -1,0 +1,143 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 780" font-family="Helvetica, Arial, sans-serif" font-size="14">
+  <title>Limen all-in-one reader prototype: wiring</title>
+  <defs>
+    <symbol id="gnd" viewBox="-14 0 28 22" overflow="visible">
+      <path d="M0 0V8M-12 8H12M-8 13H8M-4 18H4" stroke="#222" stroke-width="2" fill="none"/>
+    </symbol>
+    <style>
+      .box { fill:#f6f7f9; stroke:#2b2f36; stroke-width:1.6; }
+      .esp { fill:#eef3fb; stroke:#2b2f36; stroke-width:2; }
+      .t { fill:#14171c; }
+      .s { fill:#555d69; font-size:12.5px; }
+      .b { font-weight:700; }
+      .p12 { stroke:#c62828; stroke-width:3; fill:none; }
+      .p5  { stroke:#ef8a00; stroke-width:3; fill:none; }
+      .p33 { stroke:#1565c0; stroke-width:3; fill:none; }
+      .sig { stroke:#2e7d32; stroke-width:2.6; fill:none; }
+    </style>
+  </defs>
+  <rect width="1200" height="780" fill="#ffffff"/>
+  <text x="30" y="30" class="t b" font-size="19">Limen all-in-one reader: prototype wiring</text>
+
+  <!-- legend -->
+  <g font-size="12.5">
+    <line x1="760" y1="22" x2="790" y2="22" class="p12"/><text x="796" y="27" class="s">12 V</text>
+    <line x1="850" y1="22" x2="880" y2="22" class="p5"/><text x="886" y="27" class="s">5 V</text>
+    <line x1="930" y1="22" x2="960" y2="22" class="p33"/><text x="966" y="27" class="s">3V3</text>
+    <line x1="1020" y1="22" x2="1050" y2="22" class="sig"/><text x="1056" y="27" class="s">signal</text>
+  </g>
+
+  <!-- power chain -->
+  <rect x="30" y="60" width="110" height="80" rx="4" class="box"/>
+  <text x="85" y="88" text-anchor="middle" class="t b">J1</text>
+  <text x="85" y="106" text-anchor="middle" class="s">12 V IN</text>
+  <text x="130" y="90" text-anchor="end" class="s">+</text>
+  <text x="130" y="127" text-anchor="end" class="s">−</text>
+  <rect x="180" y="70" width="70" height="30" rx="3" class="box"/>
+  <text x="215" y="90" text-anchor="middle" class="t">F1 PTC</text>
+  <rect x="280" y="70" width="70" height="30" rx="3" class="box"/>
+  <text x="315" y="90" text-anchor="middle" class="t">D1 SS14</text>
+  <path d="M140 85H180M250 85H280M350 85H400" class="p12"/>
+  <rect x="400" y="40" width="160" height="110" rx="4" class="box"/>
+  <text x="480" y="72" text-anchor="middle" class="t b">U1 buck</text>
+  <text x="480" y="128" text-anchor="middle" class="s">set to 5.0 V before use</text>
+  <text x="408" y="82" class="s">IN+</text>
+  <text x="552" y="82" text-anchor="end" class="s">OUT+</text>
+  <use href="#gnd" x="85" y="140" width="28" height="22"/>
+  <use href="#gnd" x="480" y="150" width="28" height="22"/>
+  <text x="120" y="156" class="s">J1 −, U1 IN−/OUT−</text>
+  <text x="300" y="125" text-anchor="middle" class="s">D1: reverse-polarity protection</text>
+
+  <!-- 5 V rail -->
+  <path d="M560 85H680V296H760M680 280H580" class="p5"/>
+  <text x="690" y="170" class="s">5 V</text>
+
+  <!-- ESP32 -->
+  <rect x="380" y="240" width="200" height="480" rx="6" class="esp"/>
+  <text x="480" y="266" text-anchor="middle" class="t b">Freenove ESP32-S3</text>
+  <text x="480" y="284" text-anchor="middle" class="s">WROOM (FNK0085)</text>
+  <text x="480" y="738" text-anchor="middle" class="s">flash on the UART (CH343) USB port</text>
+  <g class="t">
+    <text x="572" y="285" text-anchor="end">5V</text>
+    <text x="572" y="335" text-anchor="end">GPIO16 (RX)</text>
+    <text x="572" y="365" text-anchor="end">GPIO17 (TX)</text>
+    <text x="572" y="435" text-anchor="end">GPIO21</text>
+    <text x="572" y="505" text-anchor="end">3V3</text>
+    <text x="572" y="635" text-anchor="end">GPIO41 (RX)</text>
+    <text x="572" y="665" text-anchor="end">GPIO42 (TX)</text>
+    <text x="572" y="705" text-anchor="end">GND</text>
+    <text x="388" y="335">GPIO1</text>
+    <text x="388" y="405">GPIO2</text>
+  </g>
+  <use href="#gnd" x="580" y="700" width="28" height="22"/>
+
+  <!-- PN532 -->
+  <rect x="760" y="230" width="200" height="150" rx="4" class="box"/>
+  <text x="860" y="254" text-anchor="middle" class="t b">PN532 NFC module</text>
+  <text x="860" y="272" text-anchor="middle" class="s">HSU: both switches 0</text>
+  <text x="768" y="301" class="t">VCC</text>
+  <text x="768" y="335" class="t">SDA = PN532 TX</text>
+  <text x="768" y="365" class="t">SCL = PN532 RX</text>
+  <path d="M580 330H760M580 360H760" class="sig"/>
+  <use href="#gnd" x="940" y="380" width="28" height="22"/>
+
+  <!-- relay -->
+  <rect x="760" y="410" width="200" height="120" rx="4" class="box"/>
+  <text x="860" y="434" text-anchor="middle" class="t b">Relay module</text>
+  <text x="860" y="452" text-anchor="middle" class="s">SRD-03VDC-SL-C, jumper on H</text>
+  <text x="768" y="435" class="t">IN</text>
+  <text x="768" y="475" class="t">VC (3V3)</text>
+  <path d="M580 430H760" class="sig"/>
+  <path d="M580 500H700V470H760M700 470V605H760" class="p33"/>
+  <use href="#gnd" x="940" y="530" width="28" height="22"/>
+  <path d="M960 475H1040" class="sig"/>
+  <rect x="1040" y="450" width="150" height="60" rx="4" class="box"/>
+  <text x="1115" y="475" text-anchor="middle" class="t b">J4</text>
+  <text x="1115" y="493" text-anchor="middle" class="s">COM / NO, dry contact</text>
+
+  <!-- RS-485 -->
+  <rect x="760" y="560" width="200" height="160" rx="4" class="box"/>
+  <text x="860" y="580" text-anchor="middle" class="t b">TTL ↔ RS-485 module</text>
+  <text x="860" y="705" text-anchor="middle" class="s">auto direction, no DE/RE</text>
+  <text x="768" y="610" class="t">VCC (3V3)</text>
+  <text x="768" y="640" class="t">TXD → ESP RX</text>
+  <text x="768" y="670" class="t">RXD ← ESP TX</text>
+  <path d="M580 630H760M580 660H760" class="sig"/>
+  <use href="#gnd" x="940" y="720" width="28" height="22"/>
+  <path d="M960 630H1040" class="sig"/>
+  <rect x="1040" y="600" width="150" height="60" rx="4" class="box"/>
+  <text x="1115" y="625" text-anchor="middle" class="t b">J3</text>
+  <text x="1115" y="643" text-anchor="middle" class="s">A / B, 120 Ω at ends</text>
+
+  <!-- LEDs -->
+  <path d="M380 330H330M260 330H214" class="sig"/>
+  <rect x="260" y="315" width="70" height="30" rx="3" class="box"/>
+  <text x="295" y="335" text-anchor="middle" class="t">330 Ω</text>
+  <circle cx="200" cy="330" r="14" fill="#43a047" stroke="#2b2f36" stroke-width="1.6"/>
+  <text x="200" y="312" text-anchor="middle" class="s">green</text>
+  <path d="M186 330H120V352" class="sig"/>
+  <use href="#gnd" x="120" y="352" width="28" height="22"/>
+
+  <path d="M380 400H330M260 400H214" class="sig"/>
+  <rect x="260" y="385" width="70" height="30" rx="3" class="box"/>
+  <text x="295" y="405" text-anchor="middle" class="t">330 Ω</text>
+  <circle cx="200" cy="400" r="14" fill="#e53935" stroke="#2b2f36" stroke-width="1.6"/>
+  <text x="200" y="382" text-anchor="middle" class="s">red</text>
+  <path d="M186 400H120V422" class="sig"/>
+  <use href="#gnd" x="120" y="422" width="28" height="22"/>
+
+  <!-- notes -->
+  <g class="s">
+    <text x="30" y="470">All GND symbols are one common net.</text>
+    <text x="30" y="488">The Freenove header has one GND pin:</text>
+    <text x="30" y="506">use a junction on the perfboard.</text>
+    <text x="30" y="540">The relay is a dry contact only: the lock</text>
+    <text x="30" y="558">supply never goes through this board.</text>
+    <text x="30" y="592">Relay and RS-485 modules run from the</text>
+    <text x="30" y="610">3V3 pin, never from 5 V.</text>
+    <text x="30" y="644">Do not connect USB and the buck's 5 V</text>
+    <text x="30" y="662">at the same time.</text>
+    <text x="30" y="696">Relay 2 and the two inputs are not</text>
+    <text x="30" y="714">connected (-1 on the device page).</text>
+  </g>
+</svg>
