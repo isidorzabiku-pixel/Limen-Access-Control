@@ -10,6 +10,7 @@
   <h1>{{ t('Visitatori') if visitatori else t('Persone') }}{% call aiuto() %}{% if visitatori %}{{ t("Chi entra solo per un periodo. La scadenza è obbligatoria: dopo, i suoi badge non funzionano.") }}{% else %}{{ t("Premi «Proprietà» per gruppi, regole e badge di ogni persona.") }}{% endif %}{% endcall %}</h1>
   <span class="badge info">{{ t("%(p1)s tot", p1=persone|length) }}</span>
   {% if ns.senza_badge > 0 %}<span class="badge warning">{{ t("%(p1)s senza credenziali attive", p1=ns.senza_badge) }}</span>{% endif %}
+  {% if user.is_admin and not visitatori %}<a class="button ghost" href="/persone?pulisci=1" style="margin-left:auto">{{ t("Pulisci tessera") }}</a>{% endif %}
 </header>
 
 {{ scarica_dati_button(request, base) }}
@@ -22,7 +23,11 @@
 {% elif errore_persone == 'varco_offline' %}
 <div class="flash-banner err" role="alert">{{ t("Il dispositivo del varco non risponde: l'invito non è stato creato. Riprova quando è online.") }}</div>
 {% elif errore_persone == 'impronta_ble' %}
-<div class="flash-banner err" role="alert">{{ t("Questo codice è riservato ai telefoni: si abbina dall'app con un invito, non si assegna come badge.") }}</div>
+<div class="flash-banner err" role="alert">{{ t("Questo codice è riservato ai telefoni e alle tessere DESFire: non si assegna come badge.") }}</div>
+{% elif errore_persone == 'numero_tessera' %}
+<div class="flash-banner err" role="alert">{{ t("Il N° tessera deve essere un numero (fino a 12 cifre).") }}</div>
+{% elif errore_persone == 'numero_duplicato' %}
+<div class="flash-banner err" role="alert">{{ t("Questo N° tessera è già usato da un'altra tessera.") }}</div>
 {% elif errore_persone == 'scadenza' %}
 <div class="flash-banner err" role="alert">{{ t("Indica fino a quando il visitatore può entrare: la scadenza è obbligatoria.") }}</div>
 {% elif errore_persone == 'validita_invertita' %}
@@ -338,6 +343,24 @@
 {% endblock %}
 
 {% block overlay %}
+{% if pulisci and user.is_admin and not persona_aperta %}
+<a href="/persone" class="drawer-backdrop" aria-label="{{ t('Chiudi') }}"></a>
+<div class="finestra-pulisci" role="dialog" aria-modal="true" aria-labelledby="pulisci-titolo">
+  <h3 id="pulisci-titolo" style="margin:0 0 1rem; display:flex; align-items:center; gap:.4rem">{{ t("Pulisci tessera") }}{% call aiuto() %}{{ t("Toglie Limen da una tessera DESFire di questo impianto: torna vergine. Il suo titolo viene eliminato.") }}{% endcall %}</h3>
+  {% if pulisci == '1' %}
+  <form action="/desfire/pulisci" method="post" class="form-colonna">
+    <label class="muted" style="font-size:.8rem">{{ t("Lettore") }}</label>
+    <select name="varco_id" required aria-label="{{ t('Lettore') }}">{% for vb in varchi_lettori %}<option value="{{ vb.id }}">{{ vb.nome }}</option>{% endfor %}</select>
+    <div style="display:flex; gap:.5rem; justify-content:flex-end; margin-top:.6rem">
+      <a class="button ghost" href="/persone">{{ t("Annulla") }}</a><button type="submit" {{ 'disabled' if not varchi_lettori }}>{{ t("Inizia") }}</button>
+    </div>
+  </form>
+  {% else %}
+  {% set tok = pulisci %}{% set s = pulisci_stato %}
+  {% include "_desfire_pulizia.html" with context %}
+  {% endif %}
+</div>
+{% endif %}
 {% if persona_aperta %}
 <a href="{{ base }}" class="drawer-backdrop" aria-label="{{ t('Chiudi dettaglio persona') }}"></a>
 <aside class="drawer">
@@ -427,94 +450,195 @@
     </section>
 
     <section role="tabpanel" class="scheda-pannello" id="pan-titoli" aria-labelledby="tab-titoli" {{ '' if scheda == 'titoli' else 'hidden' }}>
+  <style>
+    .ta-riga { border:1px solid var(--border); border-radius:10px; background:var(--card); margin-bottom:0.5rem; overflow:hidden; }
+    .ta-riga > summary { display:grid; grid-template-columns:auto 1fr auto auto; gap:0.7rem; align-items:center; padding:0.6rem 0.8rem; cursor:pointer; list-style:none; }
+    .ta-riga > summary::-webkit-details-marker { display:none; }
+    .ta-riga > summary:hover { background:rgba(255,255,255,0.03); }
+    .ta-ic { width:2rem; height:2rem; border-radius:8px; display:grid; place-items:center; background:var(--accent-dim); color:var(--accent); }
+    .ta-tipo { font-size:0.76rem; color:var(--muted); }
+    .ta-num { font-family:var(--font-mono); font-size:0.98rem; letter-spacing:0.03em; overflow:hidden; text-overflow:ellipsis; }
+    .ta-freccia { color:var(--muted); transition:transform 0.15s; }
+    .ta-riga[open] .ta-freccia { transform:rotate(90deg); }
+    .ta-riga.spento .ta-num { text-decoration:line-through; opacity:0.6; } .ta-riga.spento .ta-ic { background:rgba(255,255,255,0.05); color:var(--muted); }
+    .ta-corpo { padding:0.7rem 0.8rem 0.8rem; border-top:1px solid var(--border); }
+    .ta-kv { display:grid; grid-template-columns:auto 1fr; gap:0.25rem 1rem; font-size:0.84rem; margin-bottom:0.7rem; } .ta-kv .k { color:var(--muted); }
+    .ta-kv .v { font-family:var(--font-mono); word-break:break-all; }
+    .ta-validita { display:flex; flex-wrap:wrap; gap:0.4rem; align-items:flex-end; margin-bottom:0.7rem; }
+    .ta-validita label, .ta-campo { font-size:0.78rem; color:var(--muted); }
+    .ta-azioni { display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center; }
+    .ta-azioni .spazio { flex:1; }
+    .ta-riscrivi { margin-top:0.6rem; display:flex; gap:0.4rem; flex-wrap:wrap; }
+    .ta-riscrivi select { flex:1; min-width:9rem; }
+    .ta-aggiungi { width:100%; background:transparent; color:var(--accent); border:1.5px dashed rgba(56,189,248,0.45); padding:0.7rem; }
+    .ta-aggiungi:hover { background:var(--accent-dim); }
+    .ta-scelta { display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; }
+    .ta-scelta[hidden], .ta-pannello[hidden], .ta-aggiungi[hidden] { display:none; }
+    .ta-tile { display:flex; flex-direction:column; align-items:flex-start; gap:0.3rem; padding:0.75rem; background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:10px; text-align:left; font-weight:600; }
+    .ta-tile:hover { border-color:var(--accent); background:var(--accent-dim); }
+    .ta-tile svg { color:var(--accent); width:16px; height:16px; } .ta-tile small { font-weight:400; color:var(--muted); font-size:0.76rem; }
+    .ta-altri { grid-column:1 / -1; display:flex; gap:0.5rem; }
+    .ta-altri .ta-tile { flex:1; flex-direction:row; align-items:center; justify-content:center; padding:0.45rem 0.8rem; font-size:0.85rem; }
+    .ta-pannello { padding:0.9rem; border:1px solid var(--border); border-radius:10px; background:var(--card); }
+    .ta-pannello h3 { margin:0 0 0.8rem; display:flex; align-items:center; gap:0.4rem; }
+    .ta-indietro { background:none; border:0; color:var(--muted); padding:0 0.3rem 0 0; font-size:1.1rem; font-weight:400; }
+    .ta-fine { display:flex; gap:0.5rem; justify-content:flex-end; margin-top:0.6rem; flex-wrap:wrap; }
+  </style>
   <div class="drawer-section">
-    <h3>{{ t("Titoli di accesso") }}{% call aiuto(etichetta=t("titoli di accesso")) %}{{ t("Badge, PIN, tag UHF, telefono: una persona può averne più di uno. Il codice è unico.") }}{% endcall %}</h3>
-    <table>
-      <tr><th>{{ t("Titolo") }}</th><th>{{ t("Stato") }}</th><th></th></tr>
-      {% for m in persona_aperta.media %}
-      <tr>
-        <td><span class="muted" style="font-size:0.78rem">{{ icona_cred(m.tipo.value) }} {{ dict(tipi_cred).get(m.tipo.value, m.tipo.value) }}</span><br>{% if m.tipo.value == 'ble' %}<code title="{{ m.codice }}">{{ m.codice[:8] }}…</code>{% else %}<code>{{ m.codice }}</code>{% endif %}</td>
-        <td>
-          {% if not m.attivo %}<span class="badge err">{{ t("disattivo") }}</span>
-          {% elif m.valido_a and m.valido_a < adesso %}<span class="badge err">{{ t("scaduto") }}</span>
-          {% elif m.valido_da and m.valido_da > adesso %}<span class="badge warning">{{ t("non ancora valido") }}</span>
-          {% else %}<span class="badge ok">{{ t("attivo") }}</span>{% endif %}
-          {% if m.valido_da or m.valido_a %}
-          <div class="muted" style="font-size:0.75rem">
-            {% if m.valido_da %}{{ t("dal %(p1)s", p1=m.valido_da|ora("%d/%m/%Y %H:%M")) }}{% endif %}
-            {% if m.valido_a %}{{ t("fino al %(p1)s", p1=m.valido_a|ora("%d/%m/%Y %H:%M")) }}{% endif %}
-          </div>
-          {% endif %}
-        </td>
-        <td class="azioni-riga">
+    {% for m in persona_aperta.media %}
+    {% set tipo_m = m.tipo.value %}
+    {% set scaduto = m.valido_a and m.valido_a < adesso %}
+    <details class="ta-riga {{ 'spento' if (not m.attivo or scaduto) }}" name="titoli-{{ persona_aperta.id }}">
+      <summary>
+        <span class="ta-ic">{{ icona_cred(tipo_m) }}</span>
+        <span style="min-width:0"><div class="ta-tipo">{{ dict(tipi_cred).get(tipo_m, tipo_m) }}</div>
+          <div class="ta-num">{% if tipo_m == 'pin' %}••••{% elif tipo_m == 'ble' %}{{ m.codice[:8] }}…{% elif tipo_m == 'desfire' %}N° {{ m.numero }}{% else %}{{ m.codice }}{% endif %}</div></span>
+        {% if not m.attivo %}<span class="badge err">{{ t("disattivo") }}</span>
+        {% elif scaduto %}<span class="badge err">{{ t("scaduto") }}</span>
+        {% elif m.valido_da and m.valido_da > adesso %}<span class="badge warning">{{ t("non ancora valido") }}</span>
+        {% elif m.valido_a %}<span class="badge warning">{{ t("fino al %(p1)s", p1=m.valido_a|ora("%d/%m/%Y")) }}</span>
+        {% else %}<span class="badge ok">{{ t("attivo") }}</span>{% endif %}
+        <span class="ta-freccia" aria-hidden="true">›</span>
+      </summary>
+      <div class="ta-corpo">
+        {% if tipo_m in ('desfire', 'pin', 'ble') %}
+        <div class="ta-kv">
+          {% if tipo_m == 'desfire' %}<span class="k">UID</span><span class="v">{{ m.uid }}</span>
+          {% elif tipo_m == 'pin' %}<span class="k">{{ t("PIN") }}</span><span class="v">{{ m.codice }}</span>
+          {% else %}<span class="k">{{ t("Codice") }}</span><span class="v">{{ m.codice }}</span>{% endif %}
+        </div>
+        {% endif %}
+        <form action="/media/{{ m.id }}/validita" method="post" class="ta-validita">
+          <label>{{ t("Da") }}<br><input type="datetime-local" name="valido_da" value="{{ m.valido_da|a_input }}"></label>
+          <label>A<br><input type="datetime-local" name="valido_a" value="{{ m.valido_a|a_input }}"></label>
+          <button type="submit" class="ghost">{{ t("Salva") }}</button>{% call aiuto() %}{{ t("Vuoto = nessun limite. Vale ai varchi dopo «Invia dati».") }}{% endcall %}
+        </form>
+        <div class="ta-azioni">
           <form action="/media/{{ m.id }}/toggle" method="post" class="inline">
             <button type="submit" class="ghost">{{ t('Disattiva') if m.attivo else t('Attiva') }}</button>
           </form>
+          <span class="spazio"></span>
           <form action="/media/{{ m.id }}/elimina" method="post" class="inline">
             <button type="submit" class="danger"
-                    data-conferma="{{ t('Stai per eliminare questo titolo di accesso (%(p1)s). Smetterà subito di aprire i varchi. L\'operazione non è reversibile.', p1=(dict(tipi_cred).get(m.tipo.value, m.tipo.value) if m.tipo.value == 'pin' else m.codice)) }}"
+                    data-conferma="{{ t('Stai per eliminare questo titolo di accesso (%(p1)s). Smetterà subito di aprire i varchi. L\'operazione non è reversibile.', p1=(dict(tipi_cred).get(tipo_m, tipo_m) if tipo_m == 'pin' else ('N° ' ~ m.numero if tipo_m == 'desfire' else m.codice))) }}"
                     data-conferma-titolo="{{ t('Eliminare il titolo di accesso?') }}"
                     data-conferma-azione="{{ t('Elimina titolo') }}">{{ t("Elimina") }}</button>
           </form>
-        </td>
-      </tr>
-      <tr>
-        <td colspan="3" style="border-bottom:1px solid var(--border); padding-top:0">
-          <details>
-            <summary class="muted" style="cursor:pointer; font-size:0.78rem">{{ t("Validità nel tempo") }}</summary>
-            <form action="/media/{{ m.id }}/validita" method="post" style="display:flex; flex-wrap:wrap; gap:0.4rem; align-items:flex-end; margin-top:0.4rem">
-              <label class="muted" style="font-size:0.75rem">{{ t("Da") }}<br><input type="datetime-local" name="valido_da" value="{{ m.valido_da|a_input }}"></label>
-              <label class="muted" style="font-size:0.75rem">A<br><input type="datetime-local" name="valido_a" value="{{ m.valido_a|a_input }}"></label>
-              <button type="submit" class="ghost">{{ t("Salva") }}</button>{% call aiuto() %}{{ t("Vuoto = nessun limite. Vale ai varchi dopo «Invia dati».") }}{% endcall %}
-            </form>
-          </details>
-        </td>
-      </tr>
-      {% else %}
-      <tr><td colspan="3" class="muted">{{ t("Nessun titolo di accesso associato.") }}</td></tr>
-      {% endfor %}
-    </table>
-  </div>
-  <div class="drawer-section">
-    <h3>{{ t("Aggiungi un titolo") }}</h3>
-    <form action="/persone/{{ persona_aperta.id }}/media" method="post" class="form-colonna">
-      <select name="tipo" id="nuova-cred-tipo" aria-label="{{ t('Tipo di credenziale') }}" style="margin-bottom:0.4rem">
-        {% for tc, et in tipi_cred if tc != 'ble' %}<option value="{{ tc }}">{{ et }}{{ t(' (numero da tastiera)') if tc == 'pin' }}</option>{% endfor %}
-      </select>
-      <input type="text" name="codice" id="nuova-cred-codice" placeholder="{{ suggerimenti_cred['rfid'] }}" required autocomplete="off">
-      <details style="margin:0.4rem 0">
-        <summary class="muted" style="cursor:pointer; font-size:0.78rem">{{ t("Limita la validità (opzionale)") }}</summary>
-        <div style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-top:0.4rem">
-          <label class="muted" style="font-size:0.75rem">{{ t("Da") }}<br><input type="datetime-local" name="valido_da"></label>
-          <label class="muted" style="font-size:0.75rem">A<br><input type="datetime-local" name="valido_a"></label>
         </div>
-      </details>
-      <button type="submit">{{ t("Aggiungi titolo") }}</button>
-    </form>
-    <script>
-      (function () {
-        var t = document.getElementById('nuova-cred-tipo'), c = document.getElementById('nuova-cred-codice');
-        var sugg = {{ suggerimenti_cred|tojson }};
-        if (t && c) t.addEventListener('change', function () { c.placeholder = sugg[t.value] || ''; c.inputMode = t.value === 'pin' ? 'numeric' : 'text'; });
-      })();
-    </script>
+        {% if tipo_m == 'desfire' and varchi_ble %}
+        <form action="/persone/{{ persona_aperta.id }}/desfire/scrivi" method="post" class="ta-riscrivi">
+          <input type="hidden" name="sostituisce" value="{{ m.id }}"><input type="hidden" name="numero" value="{{ m.numero }}">
+          <select name="varco_id" required aria-label="{{ t('Lettore su cui scrivere la tessera') }}">
+            {% for vb in varchi_ble %}<option value="{{ vb.id }}">{{ vb.nome }}</option>{% endfor %}
+          </select>
+          <button type="submit" class="ghost">{{ t("Riscrivi") }}</button>{% call aiuto() %}{{ t("Tessera persa: sposta questo numero su una tessera nuova.") }}{% endcall %}
+        </form>
+        {% endif %}
+      </div>
+    </details>
+    {% else %}
+    <p class="muted" style="margin:0 0 0.6rem">{{ t("Nessun titolo di accesso associato.") }}</p>
+    {% endfor %}
   </div>
-  {% if user.is_admin and varchi_ble %}
-  <div class="drawer-section invito-ble">
-    <h3>{{ t("Telefono") }}{% call aiuto() %}{{ t("Crea un codice per questa persona: lo scrive nell'app davanti al varco scelto e il telefono diventa un suo titolo.") }}{% endcall %}</h3>
-      {% if invito_ble %}
+
+  <div class="drawer-section" id="desfire">
+    {% if desfire_scrivi %}
+    <div class="ta-pannello">
+      <h3>{{ t("Scrivi badge DESFire") }}</h3>
+      {% set tok = desfire_scrivi %}{% set s = desfire_stato %}
+      {% include "_desfire_scrittura.html" with context %}
+    </div>
+    {% elif invito_ble %}
+    <div class="ta-pannello">
+      <h3>{{ t("Mobile") }}</h3>
       <div class="campo-copia"><code id="invito-ble" class="campo-tecnico invito-codice">{{ invito_ble.codice }}</code>
         <button type="button" class="ghost" data-copy-target="#invito-ble">{{ t("Copia") }}</button></div>
       <p class="muted nota-azione">{{ t("Da scrivere nell'app davanti al varco %(varco)s, entro 10 minuti. Si mostra una sola volta.", varco=invito_ble.varco) }}</p>
-      {% endif %}
-      <form action="/persone/{{ persona_aperta.id }}/invito-ble" method="post" class="form-row">
+      <div class="ta-fine"><a class="button" href="?apri={{ persona_aperta.id }}&scheda=titoli">{{ t("Fatto") }}</a></div>
+    </div>
+    {% else %}
+    <button type="button" class="ta-aggiungi" id="ta-aggiungi">{{ t("+ Aggiungi titolo") }}</button>
+    <div class="ta-scelta" id="ta-scelta" hidden>
+      {% if varchi_ble %}<button type="button" class="ta-tile" data-ta="desfire">{{ icona_cred('desfire') }}{{ t("Tessera DESFire") }}<small>{{ t("Protetta, da scrivere sul lettore") }}</small></button>{% endif %}
+      {% if user.is_admin and varchi_ble %}<button type="button" class="ta-tile" data-ta="ble">{{ icona_cred('ble') }}{{ t("Mobile") }}<small>{{ t("App Limen, con invito") }}</small></button>{% endif %}
+      <button type="button" class="ta-tile" data-ta="rfid">{{ icona_cred('rfid') }}{{ t("Badge") }}<small>{{ t("Codice letto dal lettore") }}</small></button>
+      <button type="button" class="ta-tile" data-ta="pin">{{ icona_cred('pin') }}{{ t("PIN") }}<small>{{ t("Numero da tastiera") }}</small></button>
+      <div class="ta-altri">
+        <button type="button" class="ta-tile" data-ta="uhf">{{ t("UHF") }}</button>
+        <button type="button" class="ta-tile" data-ta="qr">{{ t("QR") }}</button>
+        <button type="button" class="ta-tile" id="ta-annulla" style="color:var(--muted)">{{ t("Annulla") }}</button>
+      </div>
+    </div>
+
+    {% if varchi_ble %}
+    <div class="ta-pannello" data-ta-pannello="desfire" hidden>
+      <h3><button type="button" class="ta-indietro" data-ta-indietro aria-label="{{ t('Indietro') }}">‹</button>{{ t("Tessera DESFire") }}{% call aiuto() %}{{ t("Appoggia una DESFire vergine sul lettore scelto: diventa una tessera di questa persona, protetta dalla chiave d'impianto.") }}{% endcall %}</h3>
+      <form action="/persone/{{ persona_aperta.id }}/desfire/scrivi" method="post" class="form-colonna">
+        <label class="ta-campo">{{ t("Lettore") }}</label>
+        <select name="varco_id" required aria-label="{{ t('Lettore su cui scrivere la tessera') }}">
+          {% for vb in varchi_ble %}<option value="{{ vb.id }}">{{ vb.nome }}</option>{% endfor %}
+        </select>
+        <label class="ta-campo" style="display:flex; align-items:center; gap:0.3rem">{{ t("N° tessera") }}{% call aiuto() %}{{ t("Quello stampato sulla tessera. Senza numero stampato: tieni quello proposto e scrivilo sulla tessera.") }}{% endcall %}</label>
+        <input type="text" name="numero" value="{{ desfire_prossimo }}" inputmode="numeric" maxlength="12" required autocomplete="off" class="mono" style="font-size:1.05rem; letter-spacing:0.06em">
+        <div class="ta-fine"><button type="submit">{{ t("Scrivi") }}</button></div>
+      </form>
+    </div>
+    {% endif %}
+    {% if user.is_admin and varchi_ble %}
+    <div class="ta-pannello" data-ta-pannello="ble" hidden>
+      <h3><button type="button" class="ta-indietro" data-ta-indietro aria-label="{{ t('Indietro') }}">‹</button>{{ t("Mobile") }}{% call aiuto() %}{{ t("Crea un codice per questa persona: lo scrive nell'app davanti al varco scelto e il telefono diventa un suo titolo.") }}{% endcall %}</h3>
+      <form action="/persone/{{ persona_aperta.id }}/invito-ble" method="post" class="form-colonna">
+        <label class="ta-campo">{{ t("Varco") }}</label>
         <select name="varco_id" required aria-label="{{ t('Varco su cui abbinare il telefono') }}">
           {% for vb in varchi_ble %}<option value="{{ vb.id }}">{{ vb.nome }}</option>{% endfor %}
         </select>
-        <button type="submit" class="ghost">{{ t("Invita un telefono") }}</button>
+        <div class="ta-fine"><button type="submit">{{ t("Crea invito") }}</button></div>
       </form>
+    </div>
+    {% endif %}
+    <div class="ta-pannello" data-ta-pannello="codice" hidden>
+      <h3><button type="button" class="ta-indietro" data-ta-indietro aria-label="{{ t('Indietro') }}">‹</button><span id="ta-codice-titolo"></span></h3>
+      <form action="/persone/{{ persona_aperta.id }}/media" method="post" class="form-colonna">
+        <input type="hidden" name="tipo" id="ta-codice-tipo" value="rfid">
+        <input type="text" name="codice" id="ta-codice" required autocomplete="off" class="mono">
+        <details style="margin:0.4rem 0">
+          <summary class="muted" style="cursor:pointer; font-size:0.78rem">{{ t("Limita la validità (opzionale)") }}</summary>
+          <div style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-top:0.4rem">
+            <label class="muted" style="font-size:0.75rem">{{ t("Da") }}<br><input type="datetime-local" name="valido_da"></label>
+            <label class="muted" style="font-size:0.75rem">A<br><input type="datetime-local" name="valido_a"></label>
+          </div>
+        </details>
+        <div class="ta-fine"><button type="submit">{{ t("Aggiungi titolo") }}</button></div>
+      </form>
+    </div>
+    <script>
+      (function () {
+        var agg = document.getElementById('ta-aggiungi'), scelta = document.getElementById('ta-scelta');
+        if (!agg || !scelta) return;
+        var pannelli = document.querySelectorAll('[data-ta-pannello]');
+        var sugg = {{ suggerimenti_cred|tojson }}, nomi = {{ dict(tipi_cred)|tojson }};
+        function mostra(cosa) {   // 'btn' | 'scelta' | nome del pannello
+          agg.hidden = cosa !== 'btn'; scelta.hidden = cosa !== 'scelta';
+          pannelli.forEach(function (p) { p.hidden = p.dataset.taPannello !== cosa; });
+        }
+        agg.addEventListener('click', function () { mostra('scelta'); });
+        document.getElementById('ta-annulla').addEventListener('click', function () { mostra('btn'); });
+        document.querySelectorAll('[data-ta-indietro]').forEach(function (b) { b.addEventListener('click', function () { mostra('scelta'); }); });
+        scelta.querySelectorAll('[data-ta]').forEach(function (b) {
+          b.addEventListener('click', function () {
+            var tipo = b.dataset.ta;
+            if (tipo === 'desfire' || tipo === 'ble') { mostra(tipo); return; }
+            document.getElementById('ta-codice-tipo').value = tipo;
+            document.getElementById('ta-codice-titolo').textContent = nomi[tipo] || tipo;
+            var c = document.getElementById('ta-codice');
+            c.placeholder = sugg[tipo] || ''; c.inputMode = tipo === 'pin' ? 'numeric' : 'text'; c.value = '';
+            mostra('codice'); c.focus();
+          });
+        });
+      })();
+    </script>
+    {% endif %}
   </div>
-  {% endif %}
     </section>
   </div>
 </aside>

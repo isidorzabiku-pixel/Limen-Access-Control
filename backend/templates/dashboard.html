@@ -119,7 +119,7 @@
         </div>
         <div class="feed-main">
           <div class="feed-title">{{ e.varco.nome if e.varco else (e.varco_nome or "—") }}</div>
-          <div class="feed-sub">{{ etichetta }}{% if e.dettaglio %} &middot; {{ e.dettaglio }}{% endif %}{% if e.media_codice is telefono %} &middot; {{ t("BLE") }}{% elif e.media_codice %} &middot; <span class="mono">{{ e.media_codice }}</span>{% endif %}{% if e.persona %} &middot; {{ e.persona.nome }} {{ e.persona.cognome }}{% endif %}</div>
+          <div class="feed-sub">{{ etichetta }}{% if e.dettaglio %} &middot; {{ e.dettaglio }}{% endif %}{% if e.media_codice is telefono %} &middot; {{ t("Mobile") }}{% elif e.media_codice is desfire %} &middot; {{ t("DESFire") }} <span class="mono">{{ numero_evento(e) or '?' }}</span>{% elif e.media_codice %} &middot; <span class="mono">{{ e.media_codice }}</span>{% endif %}{% if e.persona %} &middot; {{ e.persona.nome }} {{ e.persona.cognome }}{% endif %}</div>
         </div>
         <div class="feed-time">{{ e.timestamp|ora("%H:%M:%S") }}</div>
       </a>

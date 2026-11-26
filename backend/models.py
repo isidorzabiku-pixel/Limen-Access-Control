@@ -128,6 +128,7 @@ class TipoMedia(str, enum.Enum):
     qr = "qr"
     uhf = "uhf"     # tag UHF
     ble = "ble"     # credenziale su telefono (Bluetooth)
+    desfire = "desfire"   # tessera MIFARE DESFire scritta da questo impianto (codice "DF-<UID>")
 
 
 class AccessMedia(Base):
@@ -137,6 +138,8 @@ class AccessMedia(Base):
     id = Column(Integer, primary_key=True)
     tipo = Column(Enum(TipoMedia), default=TipoMedia.rfid, nullable=False)
     codice = Column(String(100), unique=True, nullable=False, index=True)  # UID letto dal lettore
+    numero = Column(String(20), nullable=True)   # DESFire: N° tessera (quello stampato), cosi' come scritto
+    uid = Column(String(20), nullable=True)      # DESFire: UID della tessera
     attivo = Column(Boolean, default=True)
     valido_da = Column(DateTime, nullable=True)
     valido_a = Column(DateTime, nullable=True)
@@ -360,6 +363,8 @@ class Evento(Base):
     timestamp = Column(DateTime, default=datetime.utcnow, index=True)
     varco_id = Column(Integer, ForeignKey("varchi.id"), nullable=False)
     media_codice = Column(String(100), nullable=True)
+    # N° stampato della tessera DESFire al momento del passaggio: una tessera pulita e riscritta con un altro numero non cambia lo storico
+    media_numero = Column(String(20), nullable=True)
     persona_id = Column(Integer, ForeignKey("persone.id"), nullable=True)
     esito = Column(Enum(EsitoEvento), nullable=False)
     allarme = Column(Boolean, default=False, nullable=False, index=True)  # es. violazione anti-passback

@@ -93,9 +93,89 @@
   </div>
 </div>
 
-<div class="card">
-  <h2 style="margin-top:0;">{{ t("Backup") }}{% call aiuto() %}{{ t("Copia del database. Non include") }} <code>.env</code> {{ t("né i") }} <code>config.yaml</code> {{ t("degli slave.") }}{% endcall %}</h2>
-  <a href="/sistema/backup" class="button-link"><button type="button" onclick="window.location='/sistema/backup'">{{ t("Scarica backup") }}</button></a>
+<style>
+  .file-riga { display:flex; align-items:center; gap:.7rem; padding:.55rem .75rem; border:1px solid var(--border); border-radius:8px; background:var(--bg); margin-top:.5rem; }
+  .file-riga .ic { width:2rem; height:2rem; border-radius:6px; display:grid; place-items:center; background:var(--accent-dim); color:var(--accent); flex-shrink:0; }
+  .file-riga.chiavi .ic { background:rgba(251,191,36,.14); color:var(--warning); }
+  .file-riga .nomef { font-family:var(--font-mono); font-size:.85rem; }
+  .file-riga .sotto { font-size:.8rem; color:var(--muted); }
+  .zona-file { display:block; border:1.5px dashed var(--border); border-radius:10px; padding:1.4rem 1rem; text-align:center; color:var(--muted); cursor:pointer; transition:border-color .15s, background .15s; }
+  .zona-file.sopra, .zona-file:hover { border-color:var(--accent); background:var(--accent-dim); color:var(--text); }
+  .zona-file b { color:var(--text); }
+  .controlli-ripr { margin-top:.9rem; display:grid; gap:.45rem; font-size:.9rem; }
+  .controlli-ripr .ck { display:flex; align-items:flex-start; gap:.5rem; }
+  .controlli-ripr .p { width:1.1rem; height:1.1rem; border-radius:50%; display:grid; place-items:center; font-size:.7rem; font-weight:800; flex-shrink:0; margin-top:.1rem; }
+  .controlli-ripr .ok .p { background:rgba(34,197,94,.2); color:var(--ok); }
+  .controlli-ripr .avviso .p { background:rgba(251,191,36,.2); color:var(--warning); }
+  .controlli-ripr .errore .p { background:rgba(239,68,68,.2); color:var(--err); }
+  .kv-chiave { display:grid; grid-template-columns:auto 1fr; gap:.45rem 1.2rem; font-size:.9rem; }
+  .kv-chiave .k { color:var(--muted); }
+  .impronta { font-family:var(--font-mono); letter-spacing:.12em; }
+</style>
+
+{% set ICONA_DATI = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="8" cy="4" rx="5" ry="2"/><path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/></svg>' %}
+{% set ICONA_CHIAVE = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="5.5" cy="8" r="3"/><path d="M8.5 8H14M12 8v2.5M14 8v2"/></svg>' %}
+
+<div class="card" id="backup">
+  <div style="display:flex; align-items:center; gap:.75rem; flex-wrap:wrap">
+    <h2 style="margin:0;">{{ t("Backup") }}{% call aiuto() %}{{ t("Due file: i dati e le chiavi. Per ripristinare servono entrambi; tienili in posti diversi.") }}{% endcall %}</h2>
+    <button type="button" id="scarica-backup" style="margin-left:auto">{{ t("Scarica backup") }}</button>
+  </div>
+  <div class="file-riga"><span class="ic">{{ ICONA_DATI|safe }}</span><div><div class="nomef">limen-dati-….zip</div><div class="sotto">{{ t("Persone, varchi, regole, passaggi (senza chiavi)") }}</div></div>
+    <a class="button ghost" style="margin-left:auto" href="/sistema/backup/dati">{{ t("Solo questo") }}</a></div>
+  <div class="file-riga chiavi"><span class="ic">{{ ICONA_CHIAVE|safe }}</span><div><div class="nomef">limen-chiavi-….limenkey</div><div class="sotto">{{ t("Chiave d'impianto e chiavi dei varchi") }}</div></div>
+    <a class="button ghost" style="margin-left:auto" href="/sistema/backup/chiavi">{{ t("Solo questo") }}</a></div>
+</div>
+<script>
+  (function () {
+    var b = document.getElementById('scarica-backup');
+    if (!b) return;
+    b.addEventListener('click', function () {
+      ['/sistema/backup/dati', '/sistema/backup/chiavi'].forEach(function (url, i) {
+        setTimeout(function () { var a = document.createElement('a'); a.href = url; a.download = ''; document.body.appendChild(a); a.click(); a.remove(); }, i * 700);
+      });
+    });
+  })();
+</script>
+
+<div class="card" id="ripristino">
+  <h2 style="margin-top:0;">{{ t("Ripristino") }}{% call aiuto() %}{{ t("Sostituisce tutti i dati di questo master con quelli del backup, poi il master si riavvia.") }}{% endcall %}</h2>
+  {% if ripristino %}
+    {% for nome in ripristino.file %}<div class="file-riga {{ 'chiavi' if not nome.endswith('.zip') }}"><span class="ic">{{ (ICONA_DATI if nome.endswith('.zip') else ICONA_CHIAVE)|safe }}</span><div class="nomef">{{ nome }}</div></div>{% endfor %}
+    <div class="controlli-ripr">
+      {% for livello, testo in ripristino.controlli %}<div class="ck {{ livello }}"><span class="p">{{ '✓' if livello == 'ok' else ('!' if livello == 'avviso' else '×') }}</span><span>{{ testo }}</span></div>{% endfor %}
+    </div>
+    <div style="display:flex; gap:.5rem; justify-content:flex-end; margin-top:1rem; flex-wrap:wrap">
+      <form method="post" action="/sistema/ripristino/annulla"><button type="submit" class="ghost">{{ t("Annulla") }}</button></form>
+      {% if ripristino.ok %}
+      <form method="post" action="/sistema/ripristino/conferma">
+        <input type="hidden" name="token" value="{{ ripristino.token }}">
+        <button type="submit" class="danger"
+                data-conferma="{{ t('Il master sostituisce tutti i dati con quelli del backup e si riavvia. Si rifà il login con gli utenti del backup.') }}"
+                data-conferma-titolo="{{ t('Ripristinare il backup?') }}"
+                data-conferma-impatto="{{ t('I dati attuali vanno persi;I varchi ricevono i dati del backup') }}" data-conferma-azione="{{ t('Ripristina') }}">{{ t("Ripristina") }}</button>
+      </form>
+      {% endif %}
+    </div>
+  {% else %}
+  <form method="post" action="/sistema/ripristino/controlla" enctype="multipart/form-data" id="form-ripristino">
+    <label class="zona-file" id="zona-ripristino">
+      <input type="file" name="file" multiple accept=".zip,.limenkey" hidden id="file-ripristino">
+      <b>{{ t("Trascina qui i due file del backup") }}</b><br>
+      <span style="font-size:.85rem">{{ t("dati") }} <span class="mono">.zip</span> · {{ t("chiavi") }} <span class="mono">.limenkey</span></span>
+    </label>
+  </form>
+  <script>
+    (function () {
+      var z = document.getElementById('zona-ripristino'), inp = document.getElementById('file-ripristino'), f = document.getElementById('form-ripristino');
+      if (!z) return;
+      ['dragenter', 'dragover'].forEach(function (ev) { z.addEventListener(ev, function (e) { e.preventDefault(); z.classList.add('sopra'); }); });
+      ['dragleave', 'drop'].forEach(function (ev) { z.addEventListener(ev, function (e) { e.preventDefault(); z.classList.remove('sopra'); }); });
+      z.addEventListener('drop', function (e) { if (e.dataTransfer.files.length) { inp.files = e.dataTransfer.files; f.submit(); } });
+      inp.addEventListener('change', function () { if (inp.files.length) f.submit(); });
+    })();
+  </script>
+  {% endif %}
 </div>
 
 {% endif %}
@@ -239,14 +319,31 @@
   </details>
 </div>
 
-<div class="card">
-  <h2 style="margin-top:0;">{{ t("Chiave dei telefoni") }}{% call aiuto() %}{{ t("Da rigenerare se un dispositivo di un varco viene rubato. Tutti i telefoni vanno poi abbinati di nuovo; i badge non cambiano.") }}{% endcall %}</h2>
-  {% if request.query_params.get('telefoni') %}<div class="flash-banner ok" role="status">{{ t("Chiave rigenerata e inviata ai varchi. Invita di nuovo i telefoni.") }}</div>{% endif %}
-  <form method="post" action="/sistema/telefoni/rigenera">
-    <button type="submit" class="danger"
-            data-conferma="{{ t('I telefoni abbinati smettono subito di aprire e vanno invitati di nuovo, uno per uno.') }}" data-conferma-titolo="{{ t('Rigenerare la chiave dei telefoni?') }}"
-            data-conferma-impatto="{{ t('Telefoni da abbinare di nuovo: %(n)s;I badge continuano a funzionare', n=telefoni_ble) }}" data-conferma-azione="{{ t('Rigenera') }}">{{ t("Rigenera chiave dei telefoni") }}</button>
-  </form>
+<div class="card" id="chiave">
+  <div style="display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; margin-bottom:.8rem">
+    <h2 style="margin:0;">{{ t("Chiave d'impianto") }}{% call aiuto() %}{{ t("Protegge telefoni e tessere DESFire. Nessuno la vede: è nel file chiavi del backup.") }}{% endcall %}</h2>
+  </div>
+  {% if request.query_params.get('chiave') == 'rigenerata' %}<div class="flash-banner ok" role="status">{{ t("Chiave rigenerata e inviata ai varchi. Invita di nuovo i telefoni, riscrivi le tessere e scarica un backup nuovo.") }}</div>{% endif %}
+  {% if request.query_params.get('chiave') == 'errore' %}<div class="flash-banner err" role="alert">{{ t("Chiave non rigenerata: scrivi RIGENERA e la tua password.") }}</div>{% endif %}
+  <div class="kv-chiave">
+    <span class="k">{{ t("Impronta") }}</span><span class="impronta">{{ chiave_impianto.impronta }}</span>
+    <span class="k">{{ t("Creata") }}</span><span>{{ chiave_impianto.dal|ora("%d/%m/%Y") }}</span>
+    <span class="k">{{ t("Usata da") }}</span><span>{{ t("%(n)s telefoni · %(m)s tessere DESFire", n=chiave_impianto.telefoni, m=chiave_impianto.tessere) }}</span>
+  </div>
+  <details style="margin-top:1rem">
+    <summary class="button danger" style="display:inline-block">{{ t("Rigenera…") }}</summary>
+    <form method="post" action="/sistema/chiave/rigenera" style="margin-top:.9rem; display:grid; gap:.7rem; max-width:22rem">
+      <label style="display:grid; gap:.3rem; font-size:.85rem">{{ t("Scrivi RIGENERA per confermare") }}
+        <input name="conferma" required pattern="RIGENERA" autocomplete="off"></label>
+      <label style="display:grid; gap:.3rem; font-size:.85rem">{{ t("La tua password") }}
+        <input name="password" type="password" required autocomplete="current-password"></label>
+      <div><button type="submit" class="danger"
+              data-conferma="{{ t('Telefoni e tessere DESFire smettono subito di aprire. I backup precedenti hanno la chiave vecchia.') }}"
+              data-conferma-titolo="{{ t('Rigenerare la chiave d\'impianto?') }}"
+              data-conferma-impatto="{{ t('Telefoni da invitare di nuovo: %(n)s;Tessere DESFire da riscrivere: %(m)s;I badge semplici e i PIN non cambiano;Scarica subito un backup nuovo', n=chiave_impianto.telefoni, m=chiave_impianto.tessere) }}"
+              data-conferma-azione="{{ t('Rigenera') }}">{{ t("Rigenera") }}</button></div>
+    </form>
+  </details>
 </div>
 
 <div class="card">

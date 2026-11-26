@@ -15,7 +15,7 @@ import time as time_module
 from datetime import datetime, timedelta, time as dtime
 from typing import Optional
 from urllib.parse import urlencode
-from fastapi import APIRouter, Request, Depends, Form
+from fastapi import APIRouter, Request, Depends, Form, File, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import or_, and_, func, case
 from sqlalchemy.orm import Session
@@ -32,6 +32,7 @@ from services.logger import registra_log
 from services.system_info import raccogli_info_sistema
 from services import lingua as lingua_service
 from services import ble_abbinamento, ble_inviti, udp_agent, connessioni, log_codici, backup as backup_service, api_accesso
+from services import chiavi_impianto, desfire as desfire_service
 from services.avvio import AVVIATO_IL
 from services import modifiche, tempo, presenza, impostazioni, manutenzione, salute, funzionamento as funz_service
 from services import presenze as presenze_service, permessi as permessi_service, credenziali as cred_service
@@ -391,6 +392,8 @@ def _pagina_persone(request: Request, db: Session, visitatori: bool):
                     func.lower(Gruppo.nome).like(pattern),
                     # anche per il numero di una credenziale; i PIN no (cercandolo si scoprirebbe di chi e')
                     Persona.media.any(and_(func.lower(AccessMedia.codice).like(pattern), AccessMedia.tipo != TipoMedia.pin)),
+                    # N° tessera DESFire: «123» trova anche «000123»
+                    Persona.id.in_(desfire_service.ids_persone_con_numero(db, ricerca) or {-1}),
                 )
             )
             .distinct()
@@ -451,11 +454,18 @@ def _pagina_persone(request: Request, db: Session, visitatori: bool):
             "policy_disponibili": policy_disponibili, "persona_aperta": persona_aperta,
             "scheda": scheda_persona, "ricerca": ricerca, "adesso": adesso,
             "tipo_filtro": tipo_filtro, "conteggi_cred": conteggi_cred, "riassunti": riassunti,
-            "tipi_cred": [(t, cred_service.ETICHETTE[t]) for t in cred_service.ORDINE],
-            "suggerimenti_cred": cred_service.SUGGERIMENTI,
+            "tipi_cred": [(tc, str(cred_service.ETICHETTE[tc])) for tc in cred_service.ORDINE],
+            "suggerimenti_cred": {k: str(v) for k, v in cred_service.SUGGERIMENTI.items()},
+            "pulisci": request.query_params.get("pulisci", ""),
+            "pulisci_stato": desfire_service.stato(request.query_params.get("pulisci", "")) if request.query_params.get("pulisci", "") not in ("", "1") else None,
+            "varchi_lettori": db.query(Varco).order_by(Varco.nome).all() if request.query_params.get("pulisci") else [],
             "sconosciute": credenziali_sconosciute_recenti(db),
             "invito_ble": prendi_invito_da_mostrare(user, persona_aperta.id) if persona_aperta else None,
             "varchi_ble": db.query(Varco).order_by(Varco.nome).all() if persona_aperta else [],
+            "desfire_prossimo": desfire_service.prossimo_numero(db) if persona_aperta else "",
+            "desfire_scrivi": request.query_params.get("scrivi", ""),
+            "desfire_stato": desfire_service.stato(request.query_params.get("scrivi", "")) if request.query_params.get("scrivi") else None,
+            "desfire_riscrivi": (lambda i: db.get(AccessMedia, int(i)) if i and i.isdigit() else None)(request.query_params.get("riscrivi")) if persona_aperta else None,
             "tutte_le_persone": [(p.id, f"{p.cognome} {p.nome}") for p in persone] if not ricerca else [
                 (p.id, f"{p.cognome} {p.nome}") for p in db.query(Persona).filter(Persona.ospite == visitatori).order_by(Persona.cognome, Persona.nome).all()
             ],
@@ -477,7 +487,7 @@ def crea_persona(
     """Crea una persona. Con `codice` associa subito il primo badge. I visitatori hanno la loro pagina (/visitatori)."""
     require_login(request, db)
     codice = codice.strip()
-    if cred_service.sembra_impronta_ble(codice):
+    if cred_service.codice_riservato(codice):
         return RedirectResponse("/persone?errore=impronta_ble", status_code=303)
     if codice and db.query(AccessMedia).filter(AccessMedia.codice == codice).first() is not None:
         return RedirectResponse("/persone?errore=badge_duplicato", status_code=303)
@@ -514,7 +524,7 @@ def crea_visitatore(
         return RedirectResponse("/visitatori?errore=scadenza", status_code=303)
     if da is not None and a < da:
         return RedirectResponse("/visitatori?errore=validita_invertita", status_code=303)
-    if cred_service.sembra_impronta_ble(codice):
+    if cred_service.codice_riservato(codice):
         return RedirectResponse("/visitatori?errore=impronta_ble", status_code=303)
     if codice and db.query(AccessMedia).filter(AccessMedia.codice == codice).first() is not None:
         return RedirectResponse("/visitatori?errore=badge_duplicato", status_code=303)
@@ -733,6 +743,70 @@ def reset_passback(request: Request, persona_id: int, db: Session = Depends(get_
 
 # ---------- Access media (badge / titoli di accesso) ----------
 
+# ---------- Tessere DESFire: «Scrivi badge» (services/desfire.py) ----------
+
+@router.post("/persone/{persona_id}/desfire/scrivi")
+def desfire_scrivi(request: Request, persona_id: int, varco_id: int = Form(...), numero: str = Form(""),
+                   sostituisce: str = Form(""), db: Session = Depends(get_db)):
+    """Apre la finestra di scrittura sul lettore scelto: la prima DESFire vergine appoggiata diventa la tessera N° numero."""
+    require_login(request, db)
+    base = f"{_base_persona(db, persona_id)}?apri={persona_id}&scheda=titoli"
+    persona = db.get(Persona, persona_id)
+    varco = db.get(Varco, varco_id)
+    vecchia = db.get(AccessMedia, int(sostituisce)) if sostituisce.isdigit() else None
+    if persona is None or varco is None:
+        return RedirectResponse(base, status_code=303)
+    if vecchia is not None and (vecchia.persona_id != persona_id or vecchia.tipo != TipoMedia.desfire):
+        vecchia = None
+    n = desfire_service.normalizza_numero(numero)
+    if not n:
+        return RedirectResponse(f"{base}&errore=numero_tessera", status_code=303)
+    altra = desfire_service.con_numero(db, n)
+    if altra is not None and (vecchia is None or altra.id != vecchia.id):
+        return RedirectResponse(f"{base}&errore=numero_duplicato", status_code=303)
+    tok = desfire_service.avvia(db, persona, varco, n, vecchia)
+    return RedirectResponse(f"{base}&scrivi={tok}", status_code=303)
+
+
+@router.get("/desfire/stato/{tok}", response_class=HTMLResponse)
+def desfire_stato(request: Request, tok: str, db: Session = Depends(get_db)):
+    """Pannello della scrittura in corso (htmx, ogni secondo finche' e' in attesa)."""
+    require_login(request, db)
+    return templates.TemplateResponse("_desfire_scrittura.html", {"request": request, "tok": tok, "s": desfire_service.stato(tok)})
+
+
+@router.post("/desfire/annulla/{tok}")
+def desfire_annulla(request: Request, tok: str, persona_id: int = Form(0), db: Session = Depends(get_db)):
+    require_login(request, db)
+    desfire_service.annulla(tok, db)
+    if not persona_id:                                  # «Pulisci tessera»: non parte da una persona
+        return RedirectResponse("/persone", status_code=303)
+    return RedirectResponse(f"{_base_persona(db, persona_id)}?apri={persona_id}&scheda=titoli", status_code=303)
+
+
+# «Pulisci tessera» (solo admin: elimina un titolo): toglie Limen da una tessera DESFire di questo impianto.
+@router.post("/desfire/pulisci")
+def desfire_pulisci(request: Request, varco_id: int = Form(...), db: Session = Depends(get_db)):
+    require_admin(request, db)
+    varco = db.get(Varco, varco_id)
+    if varco is None:
+        return RedirectResponse("/persone", status_code=303)
+    return RedirectResponse(f"/persone?pulisci={desfire_service.avvia_pulizia(db, varco)}", status_code=303)
+
+
+@router.get("/desfire/pulizia/stato/{tok}", response_class=HTMLResponse)
+def desfire_pulizia_stato(request: Request, tok: str, db: Session = Depends(get_db)):
+    require_admin(request, db)
+    return templates.TemplateResponse("_desfire_pulizia.html", {"request": request, "tok": tok, "s": desfire_service.stato(tok)})
+
+
+@router.post("/desfire/pulizia/conferma/{tok}")
+def desfire_pulizia_conferma(request: Request, tok: str, db: Session = Depends(get_db)):
+    require_admin(request, db)
+    desfire_service.conferma_pulizia(tok, db)
+    return RedirectResponse(f"/persone?pulisci={tok}", status_code=303)
+
+
 @router.post("/persone/{persona_id}/media")
 def aggiungi_media(
     request: Request, persona_id: int, codice: str = Form(...), tipo: str = Form("rfid"),
@@ -741,14 +815,14 @@ def aggiungi_media(
     require_login(request, db)
     codice = codice.strip()
     tipo_media = cred_service.tipo_valido(tipo)
-    if tipo_media == TipoMedia.ble:
-        # La credenziale del telefono nasce solo dall'abbinamento (invito dell'admin + abbinamento dal telefono), mai a mano.
+    if tipo_media in (TipoMedia.ble, TipoMedia.desfire):
+        # Telefono e DESFire nascono solo dall'abbinamento o da «Scrivi badge», mai a mano.
         return RedirectResponse(f"{_base_persona(db, persona_id)}?apri={persona_id}&scheda=titoli", status_code=303)
     if not codice:
         return RedirectResponse(f"{_base_persona(db, persona_id)}?apri={persona_id}&scheda=titoli&errore=badge_vuoto", status_code=303)
     if tipo_media == TipoMedia.pin and not cred_service.PIN_VALIDO.match(codice):
         return RedirectResponse(f"{_base_persona(db, persona_id)}?apri={persona_id}&scheda=titoli&errore=pin_non_valido", status_code=303)
-    if cred_service.sembra_impronta_ble(codice):
+    if cred_service.codice_riservato(codice):
         return RedirectResponse(f"{_base_persona(db, persona_id)}?apri={persona_id}&scheda=titoli&errore=impronta_ble", status_code=303)
     esistente = db.query(AccessMedia).filter(AccessMedia.codice == codice).first()
     if esistente is not None:
@@ -1170,7 +1244,7 @@ def aggiorna_ip_varco(
 ):
     """
     Imposta l'IP del varco per il canale UDP (slave leggeri: microcontrollore
-    o piccola SBC senza l'agent Python). Va messo a mano qui perché il master
+    o piccola SBC). Va messo a mano qui perché il master
     deve poter toccare lo slave e mandargli comandi e cache in unicast a un indirizzo noto,
     e per coerenza anche i report/heartbeat dello slave vengono accettati
     solo se arrivano da questo IP (vedi services/udp_agent.py).
@@ -2216,6 +2290,8 @@ def pagina_sistema(request: Request, db: Session = Depends(get_db)):
             "request": request, "user": user, "utenti": utenti, "numero_admin": numero_admin,
             "stato_udp": udp_agent.stato(),
             "telefoni_ble": ble_inviti.conta_telefoni(db),
+            "chiave_impianto": chiavi_impianto.info(db),
+            "ripristino": _RIPRISTINI.get(request.session.get("ripristino", ""), {}).get("esito"),
             "varchi_totali": len(varchi), "varchi_online": sum(1 for v in varchi if v.online),
             "da_quando_attivo": _durata_leggibile(datetime.utcnow() - AVVIATO_IL),
             "righe_log_totali": righe_log_totali, "righe_log_pulibili": righe_log_pulibili,
@@ -2314,16 +2390,100 @@ def documentazione_api(request: Request, db: Session = Depends(get_db)):
                     headers={"Content-Disposition": 'attachment; filename="limen-api.pdf"'})
 
 
-@router.get("/sistema/backup")
-def scarica_backup(request: Request, db: Session = Depends(get_db)):
+# Backup in due file (services/backup.py): dati senza segreti + file chiavi. La pagina li scarica tutti e due.
+@router.get("/sistema/backup/dati")
+def scarica_backup_dati(request: Request, db: Session = Depends(get_db)):
     user = require_admin(request, db)
-    nome_file, contenuto = backup_service.crea_backup_zip()
-    registra_log(db, t("Backup del database scaricato da %(username)s", username=user.username), categoria="sistema")
-    return Response(
-        content=contenuto,
-        media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{nome_file}"'},
-    )
+    nome_file, contenuto = backup_service.crea_backup_dati()
+    registra_log(db, t("Backup dei dati scaricato da %(username)s", username=user.username), categoria="sistema")
+    return Response(content=contenuto, media_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="{nome_file}"'})
+
+
+@router.get("/sistema/backup/chiavi")
+def scarica_backup_chiavi(request: Request, db: Session = Depends(get_db)):
+    user = require_admin(request, db)
+    nome_file, contenuto = backup_service.crea_file_chiavi(db)
+    registra_log(db, t("File chiavi del backup scaricato da %(username)s", username=user.username), livello="warning", categoria="sistema")
+    return Response(content=contenuto, media_type="application/octet-stream",
+                    headers={"Content-Disposition": f'attachment; filename="{nome_file}"', "Cache-Control": "no-store"})
+
+
+# Ripristino in due passi: controllo dei file (risultato in pagina), poi conferma. Il database preparato aspetta
+# in un file temporaneo, legato alla sessione dell'admin; scade dopo 15 minuti.
+_RIPRISTINI: dict = {}
+
+
+def _pulisci_ripristini() -> None:
+    limite = datetime.utcnow() - timedelta(minutes=15)
+    for tok in [k for k, v in _RIPRISTINI.items() if v["creato"] < limite]:
+        v = _RIPRISTINI.pop(tok)
+        if v.get("db"):
+            try:
+                os.remove(v["db"])
+            except OSError:
+                pass
+
+
+@router.post("/sistema/ripristino/controlla")
+async def ripristino_controlla(request: Request, file: list[UploadFile] = File(...), db: Session = Depends(get_db)):
+    """I file si trascinano insieme, in qualsiasi ordine: lo zip sono i dati, il resto il file chiavi."""
+    require_admin(request, db)
+    _pulisci_ripristini()
+    zip_bytes, chiavi_bytes, nomi = b"", None, []
+    for f in file[:2]:
+        contenuto = await f.read()
+        nomi.append(f.filename or "")
+        if contenuto[:2] == b"PK" and not zip_bytes:
+            zip_bytes = contenuto
+        else:
+            chiavi_bytes = contenuto
+    esito = backup_service.controlla(zip_bytes, chiavi_bytes)
+    vecchio = request.session.get("ripristino")
+    if vecchio in _RIPRISTINI and _RIPRISTINI[vecchio].get("db"):
+        try:
+            os.remove(_RIPRISTINI.pop(vecchio)["db"])
+        except OSError:
+            pass
+    tok = secrets.token_hex(8)
+    _RIPRISTINI[tok] = {
+        "creato": datetime.utcnow(), "db": esito["db"],
+        "esito": {"ok": esito["ok"], "token": tok,
+                  "file": nomi,
+                  "controlli": [(liv, t(c["t"], **{k: (t(v) if k == "motivo" else v) for k, v in c["p"].items()}))
+                                for liv, c in esito["controlli"]]},
+    }
+    request.session["ripristino"] = tok
+    return RedirectResponse("/sistema#ripristino", status_code=303)
+
+
+@router.post("/sistema/ripristino/annulla")
+def ripristino_annulla(request: Request, db: Session = Depends(get_db)):
+    require_admin(request, db)
+    tok = request.session.pop("ripristino", None)
+    v = _RIPRISTINI.pop(tok, None) if tok else None
+    if v and v.get("db"):
+        try:
+            os.remove(v["db"])
+        except OSError:
+            pass
+    return RedirectResponse("/sistema#ripristino", status_code=303)
+
+
+@router.post("/sistema/ripristino/conferma")
+def ripristino_conferma(request: Request, token: str = Form(...), db: Session = Depends(get_db)):
+    user = require_admin(request, db)
+    v = _RIPRISTINI.get(token)
+    if not v or request.session.get("ripristino") != token or not v["esito"]["ok"] or not v.get("db"):
+        return RedirectResponse("/sistema#ripristino", status_code=303)
+    registra_log(db, t("Ripristino del backup avviato da %(username)s: il master si riavvia", username=user.username),
+                 livello="warning", categoria="sistema")
+    db.close()
+    _RIPRISTINI.pop(token, None)
+    backup_service.applica(v["db"])
+    request.session.clear()                       # gli utenti del backup possono essere diversi: si rifa' il login
+    threading.Thread(target=_riavvia_dopo_risposta, daemon=True).start()
+    return RedirectResponse("/login?ripristinato=1", status_code=303)
 
 
 def _riavvia_dopo_risposta():
@@ -2337,16 +2497,19 @@ def _riavvia_dopo_risposta():
     os._exit(0)
 
 
-@router.post("/sistema/telefoni/rigenera")
-def rigenera_chiave_telefoni(request: Request, db: Session = Depends(get_db)):
-    """Chiave dei telefoni nuova, per esempio dopo il furto di un dispositivo: i titoli dei telefoni si eliminano
-    (i loro segreti derivano dalla chiave vecchia) e i telefoni vanno abbinati di nuovo. I badge non cambiano."""
+@router.post("/sistema/chiave/rigenera")
+def rigenera_chiave_impianto(request: Request, conferma: str = Form(""), password: str = Form(""), db: Session = Depends(get_db)):
+    """Chiave d'impianto nuova (furto di un lettore o altra necessita'): telefoni e tessere DESFire derivano dalla
+    vecchia, quindi le loro credenziali si eliminano (telefoni da invitare, tessere da riscrivere). Badge e PIN non
+    cambiano. Si scrive RIGENERA e la propria password."""
     user = require_admin(request, db)
-    quanti = ble_inviti.rigenera_chiave_telefoni(db)
-    registra_log(db, t("Chiave dei telefoni rigenerata da %(username)s: %(n)s telefoni da abbinare di nuovo", username=user.username, n=quanti),
-                 livello="warning", categoria="sistema")
-    _manda_cache_dopo_revoca(db)              # la chiave nuova e i titoli tolti arrivano subito ai varchi
-    return RedirectResponse("/sistema?telefoni=1", status_code=303)
+    if conferma.strip() != "RIGENERA" or not verify_password(password, user.password_hash):
+        return RedirectResponse("/sistema?chiave=errore#chiave", status_code=303)
+    telefoni, tessere = chiavi_impianto.rigenera(db)
+    registra_log(db, t("Chiave d'impianto rigenerata da %(username)s: %(n)s telefoni da invitare e %(m)s tessere DESFire da riscrivere",
+                       username=user.username, n=telefoni, m=tessere), livello="warning", categoria="sistema")
+    _manda_cache_dopo_revoca(db)              # la chiave nuova e le credenziali tolte arrivano subito ai varchi
+    return RedirectResponse("/sistema?chiave=rigenerata#chiave", status_code=303)
 
 
 @router.post("/sistema/riavvia")

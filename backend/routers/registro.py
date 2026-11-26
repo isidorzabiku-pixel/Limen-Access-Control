@@ -12,14 +12,15 @@ import io
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
-from sqlalchemy import or_, and_
+from sqlalchemy import Integer, and_, cast, false, or_
 from sqlalchemy.orm import Session, joinedload
 from urllib.parse import urlencode
 
 from database import get_db
 from auth import require_login
 from models import Evento, EsitoEvento, Persona, Varco, AccessMedia
-from services import tempo
+from services import tempo, desfire as desfire_service
+from services.credenziali import codice_riservato
 from templating import templates
 from routers.admin import ESITO_INFO
 from services.lingua import t
@@ -67,8 +68,10 @@ def query_eventi(db: Session, f: dict):
         query = query.filter(Evento.varco_id == f["varco"])
     for parola in f["q"].split():
         like = f"%{parola}%"
+        # N° tessera DESFire: «123» trova anche i passaggi della tessera «000123» (il numero registrato nel passaggio)
         query = query.filter(or_(
             Persona.nome.ilike(like), Persona.cognome.ilike(like), Evento.media_codice.ilike(like),
+            (cast(Evento.media_numero, Integer) == int(parola)) if parola.isdigit() and len(parola) < 15 else false(),
         ))
     if f["esito"] == "concessi":
         query = query.filter(Evento.esito.in_([EsitoEvento.concesso, EsitoEvento.apertura_remota, EsitoEvento.apertura_comando_esterno]))
@@ -123,7 +126,8 @@ def genera_csv(eventi) -> str:
             tempo.formatta(e.timestamp),
             _cella_sicura(e.varco.nome if e.varco else ""),
             _cella_sicura(f"{e.persona.nome} {e.persona.cognome}" if e.persona else ""),
-            _cella_sicura(e.media_codice),
+            _cella_sicura(f"DESFire N° {e.media_numero or '?'} ({e.media_codice})"
+                          if desfire_service.e_codice_desfire(e.media_codice) else e.media_codice),
             etichetta + (t(" · %(dettaglio)s", dettaglio=e.dettaglio) if e.dettaglio else ""),
             "si" if e.allarme else "",
             _cella_sicura(e.gestito_da),
@@ -170,7 +174,8 @@ def contesto_blocco(db: Session, f: dict) -> dict:
     if candidati:
         gia = {cod for (cod,) in db.query(AccessMedia.codice).filter(AccessMedia.codice.in_(list(candidati))).all()}
         for e in eventi:   # dal piu' recente: una sola riga per credenziale
-            if e.media_codice in candidati and e.media_codice not in gia and e.media_codice not in assegnabili:
+            if e.media_codice in candidati and e.media_codice not in gia and e.media_codice not in assegnabili \
+                    and not codice_riservato(e.media_codice):
                 assegnabili.append(e.media_codice)
         assegnabili = assegnabili[:MAX_ASSEGNA_LIVE]
     persone = (

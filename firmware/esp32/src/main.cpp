@@ -24,8 +24,8 @@
 #include <deque>
 #include "pagine.h"
 #include "slave.h"
-#include "ble_test.h"
 #include "ble_cred.h"
+#include "lettore_nfc.h"
 
 using namespace gk;
 
@@ -44,12 +44,10 @@ struct Config {
 static Preferences prefs;
 static Config cfg;
 
-// Lettore su UART (banco di prova: Flipper Zero o qualunque cosa mandi righe di testo). Pin fissi, riservati.
-constexpr int UART_BADGE_RX = 16, UART_BADGE_TX = 17;
-constexpr uint32_t UART_BADGE_BAUD = 115200;
-constexpr int UART_BADGE_LETTORE = 0;                    // indice del lettore nel «Funzionamento» del varco
+// Lettore NFC PN532 su UART (src/lettore_nfc.*): pin 16 e 17 fissi, riservati.
+constexpr int NFC_LETTORE = 0;                           // indice del lettore nel «Funzionamento» del varco
 #if !defined(LIMEN_BLE_LETTORE)
-#define LIMEN_BLE_LETTORE 0                              // lettore a cui va il codice ricevuto via BLE (solo con LIMEN_BLE_TEST)
+#define LIMEN_BLE_LETTORE 0                              // lettore a cui va il codice del telefono ricevuto via BLE
 #endif
 
 static void caricaConfig() {
@@ -189,6 +187,7 @@ static void apiStato() {
   d["ip"] = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
   d["rssi"] = WiFi.RSSI();
   d["uptime"] = uint32_t(hal.millis() / 1000);
+  d["nfc"] = nfcStato();
   for (int i = 0; i < 2 && i < int(d["ingressi"].size()); i++) d["ingressi"][i]["sim"] = simIngresso[i];
   rispondiJson(d);
 }
@@ -201,7 +200,7 @@ static void apiLog() {
   rispondiJson(d);
 }
 
-// Stesse regole per la console di prova e per la UART.
+// Regole del codice per la console di prova (e per il BLE di prova).
 static bool codiceValido(const String& c) {
   bool valido = c.length() > 0 && c.length() < size_t(LUNGHEZZA_CODICE);
   for (size_t i = 0; valido && i < c.length(); i++) {
@@ -297,9 +296,9 @@ static String validaConfig(const Config& n, bool passwordAdminObbligatoria) {
   if (n.adminPass.length() == 0 && passwordAdminObbligatoria) return "Set an admin password.";
   if (n.adminPass.length() > 0 && n.adminPass.length() < 4) return "The admin password must be at least 4 characters long.";
   for (int i = 0; i < 2; i++) if (!pinValido(n.relePin[i]) || !pinValido(n.ingressoPin[i]) || !pinValido(n.ledPin[i])) return "Unusable pin (avoid 19, 20 and 26-37).";
-  int usati[8] = {n.relePin[0], n.relePin[1], n.ingressoPin[0], n.ingressoPin[1], n.ledPin[0], n.ledPin[1], UART_BADGE_RX, UART_BADGE_TX};
+  int usati[8] = {n.relePin[0], n.relePin[1], n.ingressoPin[0], n.ingressoPin[1], n.ledPin[0], n.ledPin[1], NFC_RX, NFC_TX};
   for (int i = 0; i < 6; i++) for (int j = i + 1; j < 8; j++) if (usati[i] >= 0 && usati[i] == usati[j])
-    return j >= 6 ? "Pins 16 and 17 are reserved for the UART reader." : "The same pin is used twice.";
+    return j >= 6 ? "Pins 16 and 17 are reserved for the NFC reader (PN532)." : "The same pin is used twice.";
   return "";
 }
 
@@ -479,55 +478,37 @@ static void sorvegliaWifi() {
   }
 }
 
-// ---------------------------------------------------------------- lettore su UART
-// Righe di testo terminate da \n (\r ignorato): «codice» oppure «TIPO:codice» (es. «EM4100:0A1B2C3D4E»), il prefisso
-// si scarta. Il codice passa a Slave::badge come quello della console. Risposta sulla stessa UART, una riga:
-// «OK <esito>», «NO <esito>», «IGNORED» (lettore non usato nel Funzionamento) oppure «ERR <motivo>».
-static String rigaUart;
-static bool rigaUartLunga = false;
-static bool rigaUartRumore = false;
+// ---------------------------------------------------------------- lettore NFC
+// UID letta dal PN532 → Slave::badge, come un codice della console.
+static void trattaUidNfc(const String& uid) {
+  if (!slave) { Serial.println("[nfc] " + uid + " -> not configured"); return; }
+  EsitoBadge e = slave->badge(uid.c_str(), NFC_LETTORE);
+  Serial.println("[nfc] " + uid + " -> " + (e.ignorato ? String("ignored (reader not used in Operation)") : String(e.esito.c_str())));
+}
 
-static void leggiUartBadge() {
-  while (Serial1.available()) {
-    char x = char(Serial1.read());
-    if (x == '\r') continue;
-    if (x != '\n') {
-      if (x < 0x20 || x > 0x7E) { rigaUart = ""; rigaUartRumore = true; continue; }   // disturbo sulla linea
-      if (rigaUart.length() < 64) rigaUart += x; else rigaUartLunga = true;
-      continue;
-    }
-    if (rigaUartRumore) { rigaUart = ""; rigaUartLunga = false; rigaUartRumore = false; continue; }   // nessuna risposta al rumore
-    String c = rigaUart;
-    bool lunga = rigaUartLunga;
-    rigaUart = ""; rigaUartLunga = false;
-    c.trim();
-    int dp = c.lastIndexOf(':');
-    if (dp >= 0) c = c.substring(dp + 1);
-    if (c.length() == 0 && !lunga) continue;
-    if (lunga || !codiceValido(c)) { Serial.println("[uart] invalid line ignored"); Serial1.println("ERR invalid code"); continue; }
-    if (!slave) { Serial1.println("ERR not configured"); continue; }
-    EsitoBadge e = slave->badge(c.c_str(), UART_BADGE_LETTORE);
-    String esito = e.esito.c_str();
-    Serial.println("[uart] " + c + " -> " + (e.ignorato ? String("ignored") : esito));
-    Serial1.println(e.ignorato ? String("IGNORED") : String(String(e.concesso ? "OK " : "NO ") + esito));
+// Telefono Android appoggiato al lettore: stessa verifica del BLE (titolo in cache + HMAC sulla sfida del varco).
+// Credenziale non valida = silenzio, nessun evento; solo chi passa arriva a badge() e alle regole.
+static int trattaTelefonoNfc(const std::string& titolo, const uint8_t sfida[16], const uint8_t mac[32]) {
+  if (!slave || !slave->verificaAperturaBle(titolo, sfida, mac)) {
+    Serial.println("[nfc] phone credential not valid");
+    return -1;
   }
+  EsitoBadge e = slave->badge(titolo, NFC_LETTORE);
+  Serial.println("[nfc] phone " + String(titolo.c_str()) + " -> " + (e.ignorato ? String("ignored (reader not used in Operation)") : String(e.esito.c_str())));
+  return e.concesso ? 1 : 0;
 }
+static const std::string& chiaveImpiantoNfc() {
+  static const std::string vuota;
+  return slave ? slave->chiaveImpianto() : vuota;
+}
+static char finestraNfc() { return slave ? slave->modoDesfire() : 0; }
+static void scrittoNfc(const std::string& esito, const std::string& uid, const std::string& motivo) {
+  Serial.println(String("[nfc] DESFire card: ") + esito.c_str() + (uid.empty() ? "" : String(" UID ") + uid.c_str()) +
+                 (motivo.empty() ? "" : String(" (") + motivo.c_str() + ")"));
+  if (slave) slave->esitoDesfire(esito, uid, motivo);
+}
+static const GestoriNfc gestoriNfc = {trattaUidNfc, trattaTelefonoNfc, chiaveImpiantoNfc, finestraNfc, scrittoNfc};
 
-#ifdef LIMEN_BLE_TEST
-// Codice ricevuto via BLE (prova da banco): stesse regole della UART. Torna la riga di risposta.
-static String trattaCodiceBle(const String& grezzo) {
-  String c = grezzo;
-  c.trim();
-  int dp = c.lastIndexOf(':');
-  if (dp >= 0) c = c.substring(dp + 1);
-  if (!codiceValido(c)) { Serial.println("[ble] invalid code ignored"); return "ERR invalid code"; }
-  if (!slave) return "ERR not configured";
-  EsitoBadge e = slave->badge(c.c_str(), LIMEN_BLE_LETTORE);
-  String esito = e.esito.c_str();
-  Serial.println("[ble] " + c + " -> " + (e.ignorato ? String("ignored") : esito));
-  return e.ignorato ? String("IGNORED") : String(String(e.concesso ? "OK " : "NO ") + esito);
-}
-#endif
 
 // ---------------------------------------------------------------- setup / loop
 
@@ -539,9 +520,7 @@ void setup() {
   Serial.println("\nLimen slave (ESP32)");
   pinMode(0, INPUT_PULLUP);                               // tasto BOOT: 5 s = impostazioni di fabbrica
   if (!LittleFS.begin(true)) Serial.println("LittleFS not available");
-  Serial1.begin(UART_BADGE_BAUD, SERIAL_8N1, UART_BADGE_RX, UART_BADGE_TX);
-  gpio_pullup_en(gpio_num_t(UART_BADGE_RX));             // RX scollegato = linea a riposo, non rumore
-  Serial.println("UART reader: RX GPIO" + String(UART_BADGE_RX) + ", TX GPIO" + String(UART_BADGE_TX) + ", " + String(UART_BADGE_BAUD) + " baud");
+  nfcAvvia();
   caricaConfig();
   importaConfigTxt();
 
@@ -564,9 +543,6 @@ void setup() {
   } else {
     avviaReteConfigurazione();
   }
-#ifdef LIMEN_BLE_TEST
-  bleAvvia();
-#endif
 #ifdef LIMEN_BLE_CRED
   bleCredAvvia();
 #endif
@@ -585,10 +561,7 @@ void loop() {
       if (n > int(sizeof(buf))) hal.udp.flush();            // pacchetto piu' grande del previsto: il resto si scarta
       if (letti > 0) slave->onDatagram(buf, size_t(letti), std::string(hal.udp.remoteIP().toString().c_str()));
     }
-    leggiUartBadge();
-#ifdef LIMEN_BLE_TEST
-    bleLoop(trattaCodiceBle);
-#endif
+    nfcLoop(gestoriNfc);
 #ifdef LIMEN_BLE_CRED
     bleCredLoop(*slave, LIMEN_BLE_LETTORE);
 #endif

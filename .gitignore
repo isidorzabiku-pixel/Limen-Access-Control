@@ -9,6 +9,4 @@ __pycache__/
 access-control-snapshot-*.txt
 *.db-wal
 *.db-shm
-agent/stato/
-agent/config.yaml
 backend/certs/

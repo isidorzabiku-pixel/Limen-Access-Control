@@ -43,8 +43,5 @@ standard library and Material 3 — all Apache-2.0. The app uses the platform Bl
 |---|---|
 | NimBLE-Arduino 1.4.3 | Apache-2.0 |
 
-## Python test agent (`agent/`, not maintained)
-pyserial (BSD-3-Clause), PyYAML (MIT), gpiozero (BSD-3-Clause).
-
 ## Container image
 Built on the official `python:3.12-slim` image (Python Software Foundation License; Debian packages under their own licenses).

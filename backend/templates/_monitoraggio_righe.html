@@ -1,10 +1,11 @@
+{% from "_macros.html" import icona_cred %}
 {% for e in eventi %}
 {% set etichetta, classe = esito_info.get(e.esito, (e.esito.value, 'info')) %}
 <tr data-id="{{ e.id }}">
   <td data-label="Data/ora" style="white-space:nowrap">{{ e.timestamp|ora }}</td>
   <td data-label="Varco">{{ e.varco.nome if e.varco else (e.varco_nome or '—') }}</td>
   <td data-label="Persona">{{ (e.persona.nome + ' ' + e.persona.cognome) if e.persona else '—' }}</td>
-  <td data-label="Credenziale">{% if e.media_codice is telefono %}<span class="badge info">{{ t("BLE") }}</span>{% else %}<code>{{ e.media_codice or '—' }}</code>{% endif %}</td>
+  <td data-label="Credenziale">{% if e.media_codice is telefono %}<span class="cred-mon" title="{{ t('Mobile') }}">{{ icona_cred('ble') }}{{ t("Mobile") }}</span>{% elif e.media_codice is desfire %}<span class="cred-mon" title="{{ t('DESFire') }}">{{ icona_cred('desfire') }}<code>{{ numero_evento(e) or '?' }}</code></span>{% elif e.media_codice %}<span class="cred-mon" title="{{ t('Badge') }}">{{ icona_cred('rfid') }}<code>{{ e.media_codice }}</code></span>{% else %}—{% endif %}</td>
   <td data-label="Esito">
     <span class="badge {{ classe }}"{% if e.dettaglio %} title="{{ e.dettaglio }}"{% endif %}>{{ etichetta }}</span>
     {% if e.allarme %}<span class="badge err" style="margin-left:0.3rem">{{ t("Allarme") }}</span>{% endif %}

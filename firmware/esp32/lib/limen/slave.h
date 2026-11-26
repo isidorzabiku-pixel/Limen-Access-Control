@@ -1,7 +1,7 @@
 // Limen — open-source access control
 // Copyright (C) 2026 Isidor Zabiku
 // SPDX-License-Identifier: AGPL-3.0-only
-// Logica dello slave Limen: stessa dell'agent Python (agent/services/*), in un unico oggetto
+// Logica dello slave Limen in un unico oggetto
 // cooperativo (nessun thread): il programma chiama onDatagram() per ogni pacchetto ricevuto e
 // loop() spesso (ogni 10-20 ms). Tutto l'hardware passa dall'interfaccia Hal.
 //
@@ -22,7 +22,7 @@ namespace gk {
 constexpr uint16_t PORTA_UDP = 57990;
 constexpr int FINESTRA_REPLAY_SEC = 30;
 constexpr int MAX_EVENTI_IN_CODA = 300;
-constexpr const char* VERSIONE_FIRMWARE = "2026.11.12";   // mostrata dal master (campo del battito)
+constexpr const char* VERSIONE_FIRMWARE = "2026.11.18";   // mostrata dal master (campo del battito)
 constexpr int LED_NEGATO_SEC = 2;          // il LED rosso resta acceso cosi' a lungo dopo un badge negato
 
 struct EsitoBadge {
@@ -67,6 +67,17 @@ class Slave {
   // "" = ancora niente; "no"; oppure "ok <credenziale cifrata con K, esadecimale>" da dare al telefono.
   std::string prendiEsitoAbbinamentoBle() { std::string e; e.swap(esitoAbBle_); return e; }
   bool haChiaveTelefoni() const { return !chiaveTelefoni_.empty(); }
+  // Chiave d'impianto (stessa dei telefoni): da qui si ricavano anche le chiavi delle tessere DESFire.
+  const std::string& chiaveImpianto() const { return chiaveTelefoni_; }
+
+  // Tessere DESFire: il master apre una finestra di scrittura (DW) su questo varco; il lettore scrive la prima tessera
+  // appoggiata e riporta l'esito (DR, ripetuto fino a 3 volte finche' il master chiude la sessione con DW ... 0).
+  bool finestraDesfireAperta() const { return !sessioneDesfire_.empty() && hal_.millis() < finestraDesfireFinoA_; }
+  // Cosa fare con la tessera appoggiata: 'w' scrivere (DW), 'i' riconoscere, 'c' pulire (DC); 0 = finestra chiusa.
+  char modoDesfire() const { return finestraDesfireAperta() ? modoDesfire_ : 0; }
+  // esito: "scritta", "gia", "altro", "nondesfire", "tolta", "errore"; con DC anche "nostra", "nonnostra", "pulita".
+  // uid in esadecimale ("" se non letto).
+  void esitoDesfire(const std::string& esito, const std::string& uid, const std::string& motivo);
 
   // Per i test: azioni dirette.
   bool comandoUscita(int indice, char azione);
@@ -153,6 +164,14 @@ class Slave {
   uint64_t abInviatoAlle_ = 0;
   int abTentativi_ = 0;
   void mandaAbbinamentoBle();
+
+  std::string sessioneDesfire_;                       // finestra di scrittura DESFire aperta dal master
+  uint64_t finestraDesfireFinoA_ = 0;
+  char modoDesfire_ = 'w';
+  std::vector<std::string> drCampi_;                  // esito da riportare: sessione, esito, uid, motivo
+  uint64_t drInviatoAlle_ = 0;
+  int drTentativi_ = 0;
+  void mandaEsitoDesfire();
 
   Cache cache_;
   bool cacheRicevuta_ = false, cacheFresca_ = false, sincronizzato_ = false;

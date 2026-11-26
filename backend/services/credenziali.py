@@ -15,9 +15,10 @@ from models import TipoMedia
 from services.lingua import pigro
 
 # Ordine di visualizzazione (e dei filtri).
-ORDINE = ("rfid", "uhf", "ble", "pin", "qr")
-ETICHETTE = {"rfid": pigro("Badge"), "pin": pigro("PIN"), "uhf": pigro("UHF"), "ble": pigro("BLE"), "qr": pigro("QR")}
+ORDINE = ("desfire", "rfid", "uhf", "ble", "pin", "qr")
+ETICHETTE = {"desfire": pigro("DESFire"), "rfid": pigro("Badge"), "pin": pigro("PIN"), "uhf": pigro("UHF"), "ble": pigro("Mobile"), "qr": pigro("QR")}
 SUGGERIMENTI = {
+    "desfire": pigro("N° tessera"),
     "rfid": pigro("Codice del badge (UID letto dal lettore)"),
     "pin": pigro("Numero da digitare sulla tastiera (4-10 cifre)"),
     "uhf": pigro("Codice del tag UHF (EPC)"),
@@ -33,6 +34,16 @@ IMPRONTA_BLE = re.compile(r"^[A-Z2-7]{23}$")
 
 def sembra_impronta_ble(codice: str) -> bool:
     return bool(IMPRONTA_BLE.match((codice or "").strip()))
+
+
+def sembra_desfire(codice: str) -> bool:
+    """Codice di una tessera DESFire di questo impianto ("DF-<UID>"): nasce solo da «Scrivi badge»."""
+    return (codice or "").strip().startswith("DF-")
+
+
+def codice_riservato(codice: str) -> bool:
+    """Codici che non si inseriscono a mano come badge: titoli dei telefoni e tessere DESFire."""
+    return sembra_impronta_ble(codice) or sembra_desfire(codice)
 MAX_CHIP = 3          # oltre, le altre finiscono in "+N" (tutte visibili nel dettaglio della persona)
 
 
@@ -51,7 +62,9 @@ def chip(m, persona_attiva: bool, adesso: datetime) -> dict:
     return {
         "tipo": tipo, "etichetta": ETICHETTE.get(tipo, tipo),
         # Il PIN non si legge; del telefono basta l'inizio dell'impronta (il resto non serve a nessuno).
-        "codice": "••••" if tipo == "pin" else (m.codice[:8] + "…" if tipo == "ble" else m.codice), "spenta": spenta,
+        "codice": "••••" if tipo == "pin" else (m.codice[:8] + "…" if tipo == "ble" else
+                                                ("N° " + (m.numero or "?") if tipo == "desfire" else m.codice)),
+        "spenta": spenta,
         "scade": m.valido_a if (m.valido_a and m.valido_a >= adesso) else None,
         "non_ancora": bool(m.valido_da and m.valido_da > adesso),
     }

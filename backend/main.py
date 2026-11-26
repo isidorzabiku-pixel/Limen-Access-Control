@@ -24,7 +24,7 @@ from database import Base, engine
 import models  # noqa: F401  (serve per registrare i modelli su Base prima del create_all)
 from routers import auth_router, admin, registro, badge, permessi, stato, festivita, modalita, presenze, api
 from services import udp_agent, manutenzione, modifiche  # noqa: F401  (registra i listener di sessione)
-from services import impostazioni, lingua
+from services import impostazioni, lingua, chiavi_impianto
 from services.lingua import LinguaMiddleware
 
 logger = logging.getLogger("uvicorn.error")
@@ -37,6 +37,7 @@ logger = logging.getLogger("uvicorn.error")
 # passi"), basta un controllo manuale con ALTER TABLE ... ADD COLUMN — SQLite
 # lo supporta bene per colonne nullable o con un DEFAULT, come queste.
 COLONNE_AGGIUNTE = {
+    "access_media": {"numero": "VARCHAR(20)", "uid": "VARCHAR(20)"},
     "inviti_ble": {"varco_id": "INTEGER", "kid": "VARCHAR(16)", "chiave": "VARCHAR(64)", "titolo": "VARCHAR(32)", "sfida_usata": "VARCHAR(64)"},
     "users": {"lingua": "VARCHAR(5)", "password_predefinita": "BOOLEAN NOT NULL DEFAULT 0"},
     "varchi": {
@@ -81,6 +82,7 @@ COLONNE_AGGIUNTE = {
         "dettagli": "TEXT",
     },
     "eventi": {
+        "media_numero": "VARCHAR(20)",
         "gestito_da": "VARCHAR(64)",
         "gestito_at": "DATETIME",
         "dettaglio": "VARCHAR(120)",    # es. "Lettore 2", nome dell'ingresso/uscita
@@ -92,6 +94,7 @@ COLONNE_AGGIUNTE = {
 def _migra_schema():
     ispettore = inspect(engine)
     tabelle = set(ispettore.get_table_names())
+    riempi_numeri = False
     with engine.begin() as conn:
         for tabella, colonne in COLONNE_AGGIUNTE.items():
             if tabella not in tabelle:
@@ -101,6 +104,14 @@ def _migra_schema():
                 if nome not in esistenti:
                     conn.execute(text(f"ALTER TABLE {tabella} ADD COLUMN {nome} {tipo_sql}"))
                     logger.info(f"Migrazione schema: aggiunta colonna {tabella}.{nome}")
+                    if (tabella, nome) == ("eventi", "media_numero"):
+                        riempi_numeri = True
+        if riempi_numeri and "access_media" in tabelle:
+            # Storico: i passaggi di tessere DESFire registrati prima di salvare il N° nel passaggio lo prendono dalla tessera
+            # com'e' ora, una volta sola. Da qui in poi il numero di un passaggio non cambia piu'.
+            conn.execute(text(
+                "UPDATE eventi SET media_numero = (SELECT m.numero FROM access_media m WHERE m.codice = eventi.media_codice "
+                "AND m.numero IS NOT NULL AND m.numero <> '') WHERE media_numero IS NULL AND media_codice LIKE 'DF-%'"))
 
 
 def _migra_policy_multi_varco():
@@ -296,6 +307,7 @@ def _avvia_canale_udp():
     _db = SessionLocal()
     try:
         lingua.imposta_di_sistema(impostazioni.leggi(_db, "lingua_di_sistema"))
+        chiavi_impianto.assicura(_db)       # identificativo e chiave d'impianto: un master nuovo crea la sua
     finally:
         _db.close()
     udp_agent.avvia()

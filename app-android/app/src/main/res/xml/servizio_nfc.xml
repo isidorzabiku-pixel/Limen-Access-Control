@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AID dell'app Limen (F0 + "LIMEN" + versione 1), come firmware/esp32/lib/limen/nfc_telefono.h.
+     Il telefono deve essere sbloccato: un telefono perso e bloccato non apre. -->
+<host-apdu-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/servizio_nfc"
+    android:requireDeviceUnlock="true">
+    <aid-group android:category="other" android:description="@string/servizio_nfc">
+        <aid-filter android:name="F04C494D454E01" />
+    </aid-group>
+</host-apdu-service>

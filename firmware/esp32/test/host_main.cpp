@@ -19,6 +19,7 @@
 #include <random>
 #include <sstream>
 #include <sys/stat.h>
+#include "desfire.h"
 #include "slave.h"
 
 using namespace gk;
@@ -120,6 +121,12 @@ int main(int argc, char** argv) {
           printf("BADGE %s %s\n", e.ignorato ? "ignorato" : (e.concesso ? "si" : "no"), e.esito.c_str()); fflush(stdout); }
         else if (v == "input") { int n, lv; is >> n >> lv; if (n >= 0 && n < 2) hal.ingresso[n] = lv != 0; printf("OK\n"); fflush(stdout); }
         else if (v == "status") { printf("STATUS %s\n", slave.statoJson().c_str()); fflush(stdout); }
+        // Come fa src/lettore_nfc.cpp con una DESFire: "dfwindow" = finestra di scrittura aperta?; "dfwrite <esito> <uid>"
+        // riporta l'esito della scrittura al master (DR); "dfread <uid>" = DESFire valida letta (badge DF-<uid>).
+        else if (v == "dfwindow") { printf("DFWINDOW %s\n", slave.finestraDesfireAperta() ? "open" : "closed"); fflush(stdout); }
+        else if (v == "dfwrite") { std::string es, uid; is >> es >> uid; slave.esitoDesfire(es, uid, ""); printf("OK\n"); fflush(stdout); }
+        else if (v == "dfread") { std::string uid; int l = 0; is >> uid >> l; EsitoBadge e = slave.badge(desfire::codice(uid), l);
+          printf("BADGE %s %s\n", e.ignorato ? "ignorato" : (e.concesso ? "si" : "no"), e.esito.c_str()); fflush(stdout); }
         // Come fa src/ble_cred.cpp. "ab <sfida> <nonce> <mac>": abbinamento; "bleopen <titolo> <sfida> <mac> <lettore>": apertura.
         else if (v == "ab") { std::string ns, np, mac; is >> ns >> np >> mac;
           std::string bns = bin(ns), bnp = bin(np), bmac = bin(mac);

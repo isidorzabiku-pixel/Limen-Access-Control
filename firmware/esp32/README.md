@@ -9,9 +9,9 @@ master configuration and never broadcasts.
 > The slave interface (device web page, serial messages, this file, `config.txt`) is **English only**. The master web
 > app is available in Italian and English.
 
-**There is no badge reader yet**: instead, the web page has a **test console** where you type a code; it follows the
-same path as a real reader (`Slave::badge(code, reader)`). Once the reader technology is chosen, a small driver that
-calls that function is all that is needed.
+**Reader:** a PN532 NFC module (see *NFC reader* below) reads MIFARE badges, DESFire cards and phones; BLE phones are
+served by the firmware itself. The web page also has a **test console** where you type a code; it follows the same path
+as a real reader (`Slave::badge(code, reader)`).
 
 ## Getting started
 
@@ -65,37 +65,62 @@ What each output and input does (opens, siren, arming, door sensor, button, "Oth
 3, 45, 46 (used at boot). Relays must be driven through a suitable module (transistor/optocoupler), not directly from
 the pin.
 
-## UART reader (bench)
+## All-in-one reader prototype (bench-tested 26/11)
 
-Besides the web test console, the device accepts badge codes as text lines on a serial port: **RX = GPIO16,
-TX = GPIO17, 115200 8N1** (fixed, reserved: the setup page refuses them for other functions). A line is `code` or
-`TYPE:code` (the prefix is dropped), ending with `\n`. The code goes to reader 0 with the same rules as the console
-and the device answers one line: `OK <outcome>`, `NO <outcome>`, `IGNORED` (reader 0 not used in the gate's
-*Operation*) or `ERR <reason>`. Everything else works as usual.
+One board that is reader and slave: Freenove ESP32-S3 (8 MB) + PN532 (HSU) + 12 V → 5 V buck + 3 V relay module (dry
+contact COM/NO) + green and red LED. A TTL↔RS-485 module is wired for the future reader head, but there is no RS-485
+driver yet. Same firmware as every other board (`pio run -e esp32s3`); only the pins differ, set on the device page or
+with `data/config.txt.prototipo`:
 
-A Flipper Zero app that reads 125 kHz tags and sends them here is in `firmware/flipper/limen_uart_reader/`. Wiring:
-Flipper pin 13 (TX) → GPIO16, pin 14 (RX) → GPIO17, GND → GND (3.3 V on both sides, no level shifter). Register the
-badge on the master with the hex code shown on the Flipper (e.g. `0A1B2C3D4E`): codes are case-sensitive.
+| Function | GPIO | Note |
+|---|---|---|
+| PN532 | 16 (RX ← PN532 SDA/TX), 17 (TX → PN532 SCL/RX) | fixed, both module switches OFF |
+| Relay 1 | 21 | trigger jumper on **H** (active high); dry contact only, the lock supply never goes through the board |
+| Green / red LED | 1 / 2 | 330 Ω to GND each |
+| RS-485 module (wired, no driver) | 42 TX, 41 RX | auto-direction module, no DE/RE pin |
+| Relay 2, inputs | -1 | not connected |
 
-## BLE reader (bench test, separate build)
+Power: 12 V → PTC fuse → Schottky diode (reverse polarity) → buck set to **5.0 V** (check with a meter first) → the
+board's 5V pin and the PN532. The relay and RS-485 modules run from the board's 3V3 pin. **Do not connect USB and the
+buck's 5 V at the same time**: whether the board has a diode between USB and its 5V pin is not verified. To flash,
+switch the 12 V off and use the UART (CH343) USB port. Avoid GPIO 0, 3, 45, 46 (boot), 35-37 (PSRAM), 19/20 (USB).
 
-A **test-only** build adds a BLE reader to the same firmware: `pio run -e esp32s3_ble -t upload` (the normal `pio run`
-does not include it). The device advertises as `Limen-BLE-XXXX`. With a generic phone app (nRF Connect, LightBlue):
-connect, find the service `2fd7f8e4-0c6a-4a82-8100-50d9c598ca5e`, write a code (as text, same rules and `TYPE:code`
-prefix as the UART reader) to the characteristic `d112ee41-dffe-4656-9c99-1bb61f1c2130`, and read the answer
-(`OK <outcome>`, `NO <outcome>`, `IGNORED`, `ERR <reason>`; also sent as a notification) from
-`edbda37c-4492-4096-ae7c-2b0241ff83cf`. The code goes to reader 0 (build flag `LIMEN_BLE_LETTORE` to change it) with
-the same rules as the console. The serial monitor shows `[ble]` lines.
+## NFC reader (PN532)
 
-**No authentication**: anyone in range can write a code. It is a bench tool, never for a real door. A real BLE
-credential needs a challenge-response with a per-user key. Tried on a board with LightBlue on an iPhone.
+The firmware drives a **PN532** NFC module over HSU (UART): **RX = GPIO16 ← PN532 TX (SDA pin), TX = GPIO17 → PN532 RX
+(SCL pin), VCC → 3V3, GND → GND**, 115200 8N1. Set **both mode switches on the module to OFF** (HSU) before powering
+it. Pins 16 and 17 are fixed and reserved: the setup page refuses them for other functions.
 
-## BLE phone reader (separate build)
+It looks for ISO 14443A cards (MIFARE Classic/Ultralight, DESFire, NFC tags) about ten times per second and reads the
+**UID only**, as uppercase hex without separators (e.g. `DEADBEEF`, `04112233445566`): register the badge on the master
+with that code (codes are case-sensitive). The UID goes to reader 0 with the same rules as the console. A card held on
+the reader counts once; it must be away for 1 s to count again. 4-byte UIDs starting with `08` are random (phones
+without the Limen app, some DESFire cards) and are ignored. The device page shows the reader state (`PN532 1.6` or `not found`); if the PN532
+does not answer the firmware retries every 2 s. The serial monitor shows `[nfc]` lines.
 
-`pio run -e esp32s3_blecred -t upload` builds the firmware with the phone reader (`src/ble_cred.*`, device name
-`Limen-XXXX`). Each phone has a credential code and a secret received at pairing; to open it answers the reader's
+**Android phones (NFC).** When the target speaks ISO 14443-4 (SAK bit `0x20`: phones, DESFire), the reader first
+selects the Limen app (AID `F04C494D454E01`). If the phone answers, it sends a fresh 16-byte challenge and checks the
+reply (credential code + HMAC) exactly like the BLE phone credential (`Slave::verificaAperturaBle`), then calls
+`Slave::badge(code, 0)`: same rules, same events, nothing changes on the master. A wrong credential gets no reply and
+no event. Otherwise the target is treated as a badge (UID). Protocol in `lib/limen/nfc_telefono.h`. This works in
+every build once the gate has the site phone key (it arrives with the cache).
+
+**DESFire cards (AES).** Cards written by this site carry a Limen application (AID `4C 4D 01`) with two AES keys
+derived per card from the site key and the UID (NXP AN10922). The reader selects the application and authenticates with
+the read key: success means a genuine card of this site and the code `DF-<UID>` goes to `Slave::badge`. A copy (other
+UID) or a card of another site gets no reply and no event. Blank or foreign DESFire cards, and every other card, are
+read by UID as before. When the master opens a writing window (`DW`), the first blank DESFire card placed on the reader
+is written instead (an interrupted writing is completed the next time) and the result goes back with `DR`; the card
+then does not also open the door. Code in `lib/limen/desfire.*` (AES from mbedTLS, `lib/limen/aes.*`). The site key
+arrives with the cache: without it DESFire cards are read by UID.
+
+UID-only is a weak credential (a UID can be copied): use DESFire cards where it matters.
+
+## BLE phone reader
+
+Included in the single firmware (`pio run -t upload`; `esp32s3_blecred` is an alias of the same env). `src/ble_cred.*`, device name `Limen-XXXX`. Each phone has a credential code and a secret received at pairing; to open it answers the reader's
 challenge with an HMAC. An unpaired phone only gets `NO` and leaves no trace. Pairing is started from the master
-(person → Access credentials → Invite a phone). The protocol is described at the top of `src/ble_cred.h`. Tested on the
+(person → Access credentials → + Add credential → Mobile → Create invite). The protocol is described at the top of `src/ble_cred.h`. Tested on the
 bench with several Android phones.
 
 A ready-built `limen-esp32s3-blecred-*.bin` is attached to each GitHub Release (check its SHA-256). It is the application
@@ -126,11 +151,12 @@ sensor and the button (for an NC contact, pin high = contact open = door open).
 ## Structure
 
 - `lib/limen/`: the core, with no Arduino dependencies. `slave.cpp` (gate logic), `cache.cpp`, `fn.cpp`
-  (operation), `sha256.cpp` (HMAC), `hal.h` (what it asks of the platform).
+  (operation), `sha256.cpp` (HMAC), `pn532.cpp` (PN532 frames), `nfc_telefono.cpp` (phone over NFC), `desfire.cpp` + `aes.cpp` (DESFire cards), `hal.h` (what it asks of the platform).
 - `src/main.cpp`: the ESP32 platform (Wi-Fi, flash, pins, web page); `src/pagine.h`: the pages.
+- `src/lettore_nfc.cpp`: the PN532 reader on the UART.
 - `test/host_main.cpp`: the same core on a PC with a real UDP network, to test it against the master
   (`test/build_host.sh`); `test/mock/` fake Arduino headers to check that `main.cpp` compiles;
-  `test/test_config_txt.cpp` tests the reading of `config.txt`.
+  `test/test_config_txt.cpp` tests the reading of `config.txt`; `test/test_pn532.cpp` tests the PN532 frames; `test/test_desfire.cpp` the AES/CMAC/AN10922 vectors, and with `test/sim_desfire.py` (a DESFire card simulated in Python) reading and writing.
 
 Tested on a PC against the real master: introduction and pairing, cache (also multi-packet, 3000 badges), time learned
 from the master with the clock at zero, decisions (time windows, expiry, unknown), events with acknowledgement, opening

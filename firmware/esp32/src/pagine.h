@@ -27,6 +27,7 @@ static const char PAGINA_PRINCIPALE[] PROGMEM = R"HTML(<!doctype html><html lang
 <div class="riga"><span class="k">Credentials</span><span id="cache"></span></div>
 <div class="riga"><span class="k">Time</span><span id="ora"></span></div>
 <div class="riga"><span class="k">Events to deliver</span><span id="coda"></span></div>
+<div class="riga"><span class="k">NFC reader</span><span id="nfc"></span></div>
 <div class="riga"><span class="k">Network</span><span id="rete" class="mu"></span></div>
 </div>
 <div class="card"><h2>Test console</h2>
@@ -52,6 +53,7 @@ async function agg(){try{
  $('led').innerHTML='<span class="lamp'+(s.led_verde?' v':'')+'" title="Green LED: door open"></span><span class="lamp'+(s.led_rosso?' r':'')+'" title="Red LED: badge denied"></span>';
  $('ora').innerHTML=s.ora_valida?s.ora_locale:b('not synced','wa');
  $('coda').textContent=s.coda;
+ $('nfc').innerHTML=s.nfc&&s.nfc!='not found'?b(s.nfc,'ok'):b('not found','wa');
  $('rete').textContent=s.ip+' · '+s.rssi+' dBm · up '+s.uptime+' s';
  if(nl!==s.lettori){nl=s.lettori;$('let').innerHTML=Array.from({length:s.lettori},(_,i)=>'<option value="'+i+'">Reader '+(i+1)+'</option>').join('')}
  $('uscite').innerHTML=s.uscite.map((u,i)=>'<div class="riga"><span class="k">Output '+(i+1)+' · '+(RU[u.ruolo]||u.ruolo)+'</span>'+(u.eccitata?b('active','ok'):b('idle',''))+

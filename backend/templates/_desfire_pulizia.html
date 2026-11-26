@@ -1,0 +1,31 @@
+{# «Pulisci tessera» in corso (services/desfire.py). In attesa si ricarica da sola ogni secondo. #}
+{% if s is none %}
+<div id="pulizia-pannello" class="desfire-pannello"><p class="muted" style="margin:0 0 .8rem">{{ t("Pulizia non più disponibile.") }}</p>
+  <a class="button ghost" href="/persone">{{ t("Chiudi") }}</a></div>
+{% else %}
+<div id="pulizia-pannello" class="desfire-pannello"
+     {% if s.stato == 'attesa' %}hx-get="/desfire/pulizia/stato/{{ tok }}" hx-trigger="every 1s" hx-swap="outerHTML"{% endif %}>
+  <div class="desfire-carta {{ 'fatta' if s.stato == 'fatto' else ('ferma' if s.stato == 'conferma' else ('no' if s.stato != 'attesa' else '')) }}" aria-hidden="true"></div>
+  {% if s.stato == 'attesa' %}
+    <div class="desfire-titolo">{{ t("Pulizia in corso: non togliere la tessera") if s.fase == 'pul' else t("Appoggia la tessera sul lettore") }}</div>
+    <div class="muted desfire-sotto">{{ s.varco }}</div>
+    <div class="muted desfire-conto">{{ s.rimasti }} s</div>
+    <form action="/desfire/annulla/{{ tok }}" method="post" style="margin-top:.8rem"><button type="submit" class="ghost">{{ t("Annulla") }}</button></form>
+  {% elif s.stato == 'conferma' %}
+    <div class="desfire-titolo" role="status">{{ s.messaggio }}</div>
+    <div class="muted desfire-sotto">{{ t("Pulendola, il suo titolo viene eliminato. Tienila sul lettore.") }}</div>
+    <div style="display:flex; gap:.5rem; justify-content:center; margin-top:.8rem; flex-wrap:wrap">
+      <form action="/desfire/annulla/{{ tok }}" method="post"><button type="submit" class="ghost">{{ t("Annulla") }}</button></form>
+      <form action="/desfire/pulizia/conferma/{{ tok }}" method="post"><button type="submit" class="danger">{{ t("Pulisci") }}</button></form>
+    </div>
+  {% else %}
+    <div class="desfire-titolo" role="status">{{ s.messaggio or t("Pulizia annullata.") }}</div>
+    <div style="display:flex; gap:.5rem; justify-content:center; margin-top:.8rem; flex-wrap:wrap">
+      <a class="button {{ '' if s.stato == 'fatto' else 'ghost' }}" href="/persone">{{ t("Fatto") if s.stato == 'fatto' else t("Chiudi") }}</a>
+      {% if s.stato != 'fatto' %}
+      <form action="/desfire/pulisci" method="post"><input type="hidden" name="varco_id" value="{{ s.varco_id }}"><button type="submit">{{ t("Riprova") }}</button></form>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>
+{% endif %}

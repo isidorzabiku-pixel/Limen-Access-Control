@@ -1,0 +1,34 @@
+{# Scrittura di una tessera DESFire in corso (services/desfire.py). In attesa si ricarica da sola ogni secondo. #}
+{% if s is none %}
+<div id="desfire-pannello" class="desfire-pannello">
+  <p class="muted" style="margin:0">{{ t("Scrittura non più disponibile.") }}</p>
+</div>
+{% else %}
+<div id="desfire-pannello" class="desfire-pannello"
+     {% if s.stato == 'attesa' %}hx-get="/desfire/stato/{{ tok }}" hx-trigger="every 1s" hx-swap="outerHTML"{% endif %}>
+  <div class="desfire-carta {{ 'fatta' if s.stato == 'fatto' else ('no' if s.stato != 'attesa' else '') }}" aria-hidden="true"></div>
+  {% if s.stato == 'attesa' %}
+    <div class="desfire-titolo">{{ t("Appoggia la tessera sul lettore") }}</div>
+    <div class="muted desfire-sotto">{{ s.varco }} · N° <span class="mono">{{ s.numero }}</span></div>
+    <div class="muted desfire-conto">{{ s.rimasti }} s</div>
+    <form action="/desfire/annulla/{{ tok }}" method="post" style="margin-top:.8rem">
+      <input type="hidden" name="persona_id" value="{{ s.persona_id }}">
+      <button type="submit" class="ghost">{{ t("Annulla") }}</button>
+    </form>
+  {% else %}
+    <div class="desfire-titolo" role="status">{{ s.messaggio or (t("Scrittura annullata.") if s.stato == 'annullata' else '') }}</div>
+    {% if s.uid %}<div class="muted desfire-sotto">UID <span class="mono">{{ s.uid }}</span></div>{% endif %}
+    <div style="display:flex; gap:.5rem; justify-content:center; margin-top:.8rem; flex-wrap:wrap">
+      <a class="button {{ '' if s.stato == 'fatto' else 'ghost' }}" href="?apri={{ s.persona_id }}&scheda=titoli">{{ t("Fatto") if s.stato == 'fatto' else t("Chiudi") }}</a>
+      {% if s.stato != 'fatto' %}
+      <form action="/persone/{{ s.persona_id }}/desfire/scrivi" method="post">
+        <input type="hidden" name="varco_id" value="{{ s.varco_id }}">
+        <input type="hidden" name="numero" value="{{ s.numero }}">
+        <input type="hidden" name="sostituisce" value="{{ s.sostituisce or '' }}">
+        <button type="submit">{{ t("Riprova") }}</button>
+      </form>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>
+{% endif %}

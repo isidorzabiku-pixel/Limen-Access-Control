@@ -21,6 +21,7 @@
     <span>Limen</span>
   </div>
   {% if error %}<p class="login-errore" role="alert">{{ error }}</p>{% endif %}
+  {% if request.query_params.get('ripristinato') %}<p class="login-errore" role="status" style="background:rgba(34,197,94,.12); border-color:rgba(34,197,94,.4); color:var(--ok)">{{ t("Backup ripristinato: accedi con un utente del backup.") }}</p>{% endif %}
   <form method="post" action="/login">
     <label for="login-utente">{{ t("Utente") }}</label>
     <input type="text" id="login-utente" name="username" required autofocus autocomplete="username">

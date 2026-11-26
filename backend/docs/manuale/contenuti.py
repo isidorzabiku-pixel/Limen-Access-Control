@@ -34,7 +34,9 @@ def sez_en(ui, im):
 <h3>Opening a door by hand</h3>
 <p>On the Dashboard press {ui("Open")} next to the gate, or open the gate in {ui("Gates")} and press {ui("Open now")}. It works only if the gate is online, and opens it once.</p>
 <h3>Pairing a phone (administrators)</h3>
-<p>A phone is never typed in by hand. In the person's {ui("Access credentials")}, under {ui("Phone")}, choose the gate where the person is standing and press {ui("Invite a phone")}: a code appears once and is valid for 10 minutes, only at that gate. The person types it in the Limen app in front of the gate and presses Pair: the phone shows up in their credentials and works right away, with no further step. Give the code only to that person. A lost phone: delete its credential and invite a new one.</p>
+<p>A phone is never typed in by hand. In the person's {ui("Access credentials")}, press {ui("+ Add credential")}, choose {ui("Mobile")}, pick the gate where the person is standing and press {ui("Create invite")}: a code appears once and is valid for 10 minutes, only at that gate. The person types it in the Limen app in front of the gate and presses Pair: the phone shows up in their credentials and works right away, with no further step. Give the code only to that person. A lost phone: delete its credential and invite a new one. A paired phone also opens by tapping it, unlocked, on the reader (NFC), without opening the app.</p>
+<h3>Writing a DESFire card</h3>
+<p>DESFire cards are never typed in either. In the person's {ui("Access credentials")}, press {ui("+ Add credential")}, choose {ui("DESFire card")}, pick the reader (for example the one on your desk), check the {ui("Card no.")} (the one printed on the card; the next number is proposed) and press {ui("Write")}. Within 30 seconds place a blank DESFire card on the reader: when {ui("Done")} appears the card belongs to the person. To find a card, type its number in the search, even without the leading zeros (123 finds 000123). A lost card: {ui("Rewrite")} moves its number to a new card, and the old one stops opening. To make a DESFire card blank again, an administrator presses {ui("Clean card")} at the top of People and places the card on a reader: if it was assigned, its credential is deleted.</p>
 """),
         ("Setting up access", f"""
 <p>Access works with <b>rules</b>. A rule says <i>which gates</i> and <i>when</i> (a time window). People receive rules directly or through groups. Five steps, in this order:</p>
@@ -46,7 +48,7 @@ def sez_en(ui, im):
 <li><b>Send data.</b> Press {ui("Send data to devices")}. Changes reach the doors only after this.</li>
 </ol>
 {im("persona", "A person's properties: groups, direct rules and effective permissions.")}
-<div class="note"><b>Unknown badge?</b> A badge read at a gate but not assigned appears in People, under {ui("Credentials read but not recognised")}: press {ui("Assign to…")} and choose the person, or {ui("Ignore")} ({ui("Ignore all")} clears the list). In Monitoring a phone is shown as {ui("BLE")}: its full code is in the passage detail.</div>
+<div class="note"><b>Unknown badge?</b> A badge read at a gate but not assigned appears in People, under {ui("Credentials read but not recognised")}: press {ui("Assign to…")} and choose the person, or {ui("Ignore")} ({ui("Ignore all")} clears the list). In Monitoring a phone is shown as {ui("Mobile")} (its full code is in the passage detail), a DESFire card with its number and a badge with its code, each with its own icon. The card number shown in a passage is the one the card had at that moment and never changes, even if the card is later cleaned or rewritten.</div>
 <div class="note"><b>Check before you trust it.</b> {ui("See effective permissions")} in a person's properties shows what that person can really do. A rule with no gate or no time window is marked <i>incomplete</i> and grants nothing.</div>
 {im("policy", "Access rules: gates, time window and status.")}
 <div class="note warn"><b>Do not forget step 5.</b> After any change to people, rules, time windows or gates, press {ui("Send data to devices")}. Gates also receive data automatically every 6 hours, but do not wait for it. The exception is deactivating or deleting a credential, which is sent at once.</div>"""),
@@ -70,8 +72,9 @@ def sez_en(ui, im):
 {im("sistema", "System properties (administrators): backup, restart, data retention, API and users.")}
 <ul>
 <li><b>Users.</b> Create users, make them operator or administrator, reset a password, delete. There must always be at least one administrator.</li>
-<li><b>Backup.</b> {ui("Download backup")} saves a copy of the database. Keep it somewhere safe: it contains the keys of the gates and of the phones.</li>
-<li><b>Phone key.</b> If a gate device is stolen, press {ui("Regenerate phone key")}: all phones stop opening and must be invited again. Badges are not affected.</li>
+<li><b>Backup.</b> {ui("Download backup")} saves two files: the data and the keys. Keep them in two different safe places: both are needed to restore.</li>
+<li><b>Restore.</b> Drop the two files of a backup on {ui("Restore")}: Limen checks that they belong together, shows what it will restore, and after {ui("Restore")} replaces the data and restarts. Phones and DESFire cards keep working.</li>
+<li><b>Site key.</b> It protects phones and DESFire cards; nobody sees it. If a gate device is stolen, press {ui("Regenerate…")}, type RIGENERA and your password: all phones and DESFire cards stop opening (phones to invite again, cards to rewrite). Plain badges and PINs are not affected. Then download a new backup.</li>
 <li><b>Data retention.</b> How many days passages and log are kept (0 = forever). {ui("Save and apply now")} applies it immediately. Alerts still to be handled are never deleted.</li>
 <li><b>Log cleanup.</b> {ui("Clean")} removes old information lines from the system log; passages and warnings are not touched.</li>
 <li><b>App restart.</b> Works only when the app runs as a service.</li>
@@ -130,7 +133,9 @@ def sez_it(ui, im):
 <h3>Aprire una porta a mano</h3>
 <p>Nella Dashboard premi {ui("Apri")} accanto al varco, oppure apri il varco in {ui("Varchi")} e premi {ui("Apri ora")}. Funziona solo se il varco è online, e apre una volta sola.</p>
 <h3>Abbinare un telefono (amministratori)</h3>
-<p>Il telefono non si inserisce mai a mano. Nei {ui("Titoli di accesso")} della persona, sotto {ui("Telefono")}, scegli il varco davanti a cui si trova e premi {ui("Invita un telefono")}: compare un codice, una sola volta, valido 10 minuti e solo su quel varco. La persona lo scrive nell'app Limen davanti al varco e preme Pair: il telefono compare nei suoi titoli e funziona subito, senza altri passaggi. Dai il codice solo a quella persona. Telefono perso: elimina la sua credenziale e invita un telefono nuovo.</p>
+<p>Il telefono non si inserisce mai a mano. Nei {ui("Titoli di accesso")} della persona, premi {ui("+ Aggiungi titolo")}, scegli {ui("Mobile")}, seleziona il varco davanti a cui si trova la persona e premi {ui("Crea invito")}: compare un codice, una sola volta, valido 10 minuti e solo su quel varco. La persona lo scrive nell'app Limen davanti al varco e preme Pair: il telefono compare nei suoi titoli e funziona subito, senza altri passaggi. Dai il codice solo a quella persona. Telefono perso: elimina la sua credenziale e invita un telefono nuovo. Un telefono abbinato apre anche appoggiandolo, sbloccato, al lettore (NFC), senza aprire l'app.</p>
+<h3>Scrivere una tessera DESFire</h3>
+<p>Anche le tessere DESFire non si inseriscono a mano. Nei {ui("Titoli di accesso")} della persona, premi {ui("+ Aggiungi titolo")}, scegli {ui("Tessera DESFire")}, seleziona il lettore (per esempio quello sulla tua scrivania), controlla il {ui("N° tessera")} (quello stampato sulla tessera; viene proposto il successivo) e premi {ui("Scrivi")}. Entro 30 secondi appoggia una tessera DESFire vergine sul lettore: quando compare {ui("Fatto")} la tessera è della persona. Per trovare una tessera scrivi il suo numero nella ricerca, anche senza gli zeri davanti (123 trova 000123). Tessera persa: {ui("Riscrivi")} sposta il suo numero su una tessera nuova e la vecchia smette di aprire. Per rendere di nuovo vergine una tessera DESFire, un amministratore preme {ui("Pulisci tessera")} in alto in Persone e la appoggia a un lettore: se era assegnata, il suo titolo viene eliminato.</p>
 """),
         ("Configurare gli accessi", f"""
 <p>Gli accessi funzionano con le <b>regole</b>. Una regola dice <i>quali varchi</i> e <i>quando</i> (una fascia oraria). Le persone ricevono le regole direttamente o tramite i gruppi. Cinque passi, in quest'ordine:</p>
@@ -142,7 +147,7 @@ def sez_it(ui, im):
 <li><b>Invia i dati.</b> Premi {ui("Invia dati ai dispositivi")}. Le modifiche arrivano alle porte solo dopo questo passaggio.</li>
 </ol>
 {im("persona", "Le proprietà di una persona: gruppi, regole dirette e permessi effettivi.")}
-<div class="note"><b>Badge sconosciuto?</b> Un badge letto a un varco ma non assegnato compare in Persone, sotto {ui("Credenziali lette e non riconosciute")}: premi {ui("Assegna a…")} e scegli la persona, oppure {ui("Ignora")} ({ui("Ignora tutte")} svuota l'elenco). Nel Monitoraggio un telefono compare come {ui("BLE")}: il codice intero è nel dettaglio del passaggio.</div>
+<div class="note"><b>Badge sconosciuto?</b> Un badge letto a un varco ma non assegnato compare in Persone, sotto {ui("Credenziali lette e non riconosciute")}: premi {ui("Assegna a…")} e scegli la persona, oppure {ui("Ignora")} ({ui("Ignora tutte")} svuota l'elenco). Nel Monitoraggio un telefono compare come {ui("Mobile")} (il codice intero è nel dettaglio del passaggio), una tessera DESFire con il suo numero e un badge con il suo codice, ciascuno con la propria icona. Il numero della tessera in un passaggio è quello che aveva in quel momento e non cambia mai, anche se la tessera viene poi pulita o riscritta.</div>
 <div class="note"><b>Controlla prima di fidarti.</b> {ui("Vedi permessi effettivi")} nelle proprietà di una persona mostra cosa può fare davvero. Una regola senza varco o senza fascia oraria è segnata come <i>incompleta</i> e non concede nulla.</div>
 {im("policy", "Regole di accesso: varchi, fascia oraria e stato.")}
 <div class="note warn"><b>Non dimenticare il passo 5.</b> Dopo ogni modifica a persone, regole, fasce orarie o varchi, premi {ui("Invia dati ai dispositivi")}. I varchi ricevono i dati anche in automatico ogni 6 ore, ma non aspettare. Fa eccezione la disattivazione o l'eliminazione di un titolo di accesso, che parte subito.</div>"""),
@@ -166,8 +171,9 @@ def sez_it(ui, im):
 {im("sistema", "Proprietà di sistema (amministratori): backup, riavvio, conservazione dei dati, API e utenti.")}
 <ul>
 <li><b>Utenti.</b> Crea utenti, rendili operatori o amministratori, reimposta una password, eliminali. Deve esserci sempre almeno un amministratore.</li>
-<li><b>Backup.</b> {ui("Scarica backup")} salva una copia del database. Tienila al sicuro: contiene le chiavi dei varchi e dei telefoni.</li>
-<li><b>Chiave dei telefoni.</b> Se il dispositivo di un varco viene rubato, premi {ui("Rigenera chiave dei telefoni")}: tutti i telefoni smettono di aprire e vanno invitati di nuovo. I badge non cambiano.</li>
+<li><b>Backup.</b> {ui("Scarica backup")} salva due file: i dati e le chiavi. Tienili in due posti sicuri e diversi: per ripristinare servono entrambi.</li>
+<li><b>Ripristino.</b> Trascina i due file di un backup su {ui("Ripristino")}: Limen controlla che vadano insieme, mostra cosa ripristina e dopo {ui("Ripristina")} sostituisce i dati e si riavvia. Telefoni e tessere DESFire continuano a funzionare.</li>
+<li><b>Chiave d'impianto.</b> Protegge telefoni e tessere DESFire; nessuno la vede. Se il dispositivo di un varco viene rubato, premi {ui("Rigenera…")}, scrivi RIGENERA e la tua password: tutti i telefoni e le tessere DESFire smettono di aprire (telefoni da invitare di nuovo, tessere da riscrivere). Badge semplici e PIN non cambiano. Poi scarica un backup nuovo.</li>
 <li><b>Conservazione dei dati.</b> Per quanti giorni si conservano passaggi e log (0 = per sempre). {ui("Salva e applica ora")} la applica subito. Gli alert ancora da gestire non vengono mai eliminati.</li>
 <li><b>Pulizia log.</b> {ui("Pulisci")} elimina le vecchie righe informative del log di sistema; passaggi e avvisi restano.</li>
 <li><b>Riavvio app.</b> Funziona solo se l'app gira come servizio.</li>

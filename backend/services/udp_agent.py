@@ -87,7 +87,7 @@ from database import SessionLocal
 from models import Varco, Persona, AccessMedia, Policy, EsitoEvento, Evento, LogSistema
 from services.policy_engine import aggiorna_posizione_anti_passback, blocco_ingresso_fino, violazione_anti_passback
 from services.logger import registra_log
-from services import funzionamento, presenza, tempo, festivita, connessioni, motivi, ble_inviti, ble_abbinamento
+from services import funzionamento, presenza, tempo, festivita, connessioni, motivi, ble_inviti, ble_abbinamento, desfire
 from services.lingua import t
 
 logger = logging.getLogger("udp_agent")
@@ -276,6 +276,21 @@ def apri_finestra_abbinamento(varco: Varco, secondi: int, kid: str, chiave: byte
 
 def chiudi_finestra_abbinamento(varco: Varco) -> bool:
     return _invia_firmato(varco, "BP", 0)
+
+
+def apri_finestra_desfire(varco: Varco, sessione: str, secondi: int) -> bool:
+    """DW: per `secondi` il lettore del varco scrive la prima tessera DESFire vergine appoggiata (services/desfire.py)."""
+    return _invia_firmato(varco, "DW", sessione, secondi)
+
+
+def apri_finestra_pulizia_desfire(varco: Varco, sessione: str, secondi: int, modo: str) -> bool:
+    """DC: il lettore riconosce (modo "i") o pulisce (modo "c") la prima tessera DESFire appoggiata. Tipo diverso da DW:
+    un firmware vecchio lo ignora invece di scrivere la tessera."""
+    return _invia_firmato(varco, "DC", sessione, secondi, modo)
+
+
+def chiudi_finestra_desfire(varco: Varco, sessione: str) -> bool:
+    return _invia_firmato(varco, "DW", sessione, 0)
 
 
 def invia_comando_uscita(varco: Varco, indice: int, azione: str) -> bool:
@@ -540,7 +555,7 @@ def invia_cache(db, solo_varco_id: Optional[int] = None) -> dict[int, int]:
             continue
         # Varco disattivato da un amministratore: manda una cache vuota (nessun
         # badge autorizzato) PIU' il campo "attivo": false esplicito. Lo slave
-        # (vedi agent/services/udp_client.py) controlla questo campo prima di
+        # (vedi firmware/esp32/lib/limen/slave.cpp) controlla questo campo prima di
         # guardare i badge: senza, una cache vuota sarebbe indistinguibile da
         # "nessuno ha policy su questo varco" e lo slave riporterebbe ogni
         # tentativo come "credenziale sconosciuta" invece che "varco
@@ -769,6 +784,7 @@ def _gestisci_evento(db, varco: Varco, campi: list) -> Optional[int]:
         timestamp=istante,
         varco_id=varco.id,
         media_codice=codice,
+        media_numero=(media.numero if media is not None and media.numero else None),
         persona_id=persona.id if persona else None,
         esito=esito,
         allarme=(esito == EsitoEvento.negato_anti_passback or violazione),
@@ -999,7 +1015,7 @@ def _elabora_pacchetto(dato: bytes, mittente_ip: str) -> None:
             _gestisci_richiesta_abbinamento(varco_id, parti[3], mittente_ip)
         return
 
-    if tipo not in ("HB", "EA", "EV", "SP", "CA", "RC", "IN", "SU", "AB"):
+    if tipo not in ("HB", "EA", "EV", "SP", "CA", "RC", "IN", "SU", "AB", "DR"):
         return  # "cache"/"AP" sono mandati dal master, non li aspettiamo in ricezione
 
     canonico = "|".join(parti[:-1]).encode()
@@ -1065,6 +1081,7 @@ def _elabora_pacchetto(dato: bytes, mittente_ip: str) -> None:
 
         da_confermare = None
         esito_ab = kid_ab = None
+        sessione_dr = None
         if tipo == "EV":
             da_confermare = _gestisci_evento(db, varco, campi_specifici)
         elif tipo == "SP":
@@ -1081,6 +1098,8 @@ def _elabora_pacchetto(dato: bytes, mittente_ip: str) -> None:
             _gestisci_richiesta_cache(db, varco)
         elif tipo == "HB":
             _gestisci_stato_heartbeat(varco, campi_specifici, ts)
+        elif tipo == "DR":
+            sessione_dr = desfire.esito_ricevuto(db, varco, campi_specifici)
         elif tipo == "AB":
             esito_ab, kid_ab, media_ab, nuova_ab = ble_inviti.gestisci_richiesta(db, varco.id, campi_specifici)
             titolo_ab = media_ab.codice if media_ab is not None else ""
@@ -1095,6 +1114,8 @@ def _elabora_pacchetto(dato: bytes, mittente_ip: str) -> None:
         # slave non la riceve e ritrasmette.
         if da_confermare is not None:
             invia_conferma_evento(varco, da_confermare)
+        if sessione_dr is not None:
+            chiudi_finestra_desfire(varco, sessione_dr)    # esito ricevuto: lo slave smette di ripeterlo
         if esito_ab is not None:
             if esito_ab == "ok":
                 _invia_firmato(varco, "AR", esito_ab, kid_ab, titolo_ab)

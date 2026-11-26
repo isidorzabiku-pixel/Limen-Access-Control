@@ -25,7 +25,7 @@ def _base_persona(db: Session, persona_id) -> str:
     p = db.query(Persona).filter(Persona.id == int(persona_id)).first() if str(persona_id).isdigit() else None
     return "/visitatori" if p is not None and p.ospite else "/persone"
 
-from services.credenziali import sembra_impronta_ble
+from services.credenziali import codice_riservato
 
 router = APIRouter()
 
@@ -61,7 +61,7 @@ def credenziali_sconosciute_recenti(db: Session, quante: int = 8, giorni: int = 
     ignorate = {c: t for c, t in db.query(CredenzialeIgnorata.codice, CredenzialeIgnorata.ignorata_at)
                 .filter(CredenzialeIgnorata.codice.in_(list(visti))).all()}
     return [v for k, v in visti.items()
-            if not sembra_impronta_ble(k) and k not in gia and not (k in ignorate and v["timestamp"] <= ignorate[k])][:quante]
+            if not codice_riservato(k) and k not in gia and not (k in ignorate and v["timestamp"] <= ignorate[k])][:quante]
 
 
 @router.post("/media/ignora")
@@ -121,7 +121,7 @@ def assegna_credenziale(
     persona = db.query(Persona).filter(Persona.id == persona_id).first()
     if not codice or persona is None:
         return RedirectResponse(f"{destinazione}{sep}errore=badge_vuoto", status_code=303)
-    if sembra_impronta_ble(codice):
+    if codice_riservato(codice):
         return RedirectResponse(f"{destinazione}{sep}errore=impronta_ble", status_code=303)
     if db.query(AccessMedia).filter(AccessMedia.codice == codice).first() is not None:
         return RedirectResponse(f"{destinazione}{sep}errore=badge_duplicato", status_code=303)

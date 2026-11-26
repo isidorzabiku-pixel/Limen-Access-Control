@@ -18,10 +18,16 @@ The phone as an access credential for Limen gates (ESP32 slave, firmware env `es
 Kotlin, Jetpack Compose, native `android.bluetooth.le`, no BLE libraries. minSdk 26 (Android 8.0). UI in English,
 colours and logo of the Limen webapp. Permissions: Android 12+ `BLUETOOTH_SCAN` and `BLUETOOTH_CONNECT`; Android 8–11
 location. Files: `BleClient.kt` (scan + operations), `ChiaveTelefono.kt` (credential and calculations), `Varchi.kt`
-(saved gates), `MainActivity.kt` (the three screens).
+(saved gates), `MainActivity.kt` (the three screens), `NfcServizio.kt` (opening via NFC).
 
-The old test firmware `esp32s3_ble` (code in clear, no authentication) is **no longer supported** by the app from
-0.5: use a generic app such as LightBlue for it.
+## Opening with NFC (0.6)
+
+On phones with NFC the same credential also opens by **tapping the phone on the gate's NFC reader** (PN532), without
+opening the app: the phone only has to be unlocked (`requireDeviceUnlock`, so a lost locked phone does not open). The
+app registers a card-emulation service (`NfcServizio.kt`, Android HCE) for the AID `F04C494D454E01`; the gate selects
+it, sends a 16-byte challenge and gets `code (23) || HMAC-SHA256(secret, "LIMEN-OPEN" || challenge)`, exactly as over
+BLE. A short vibration confirms a granted passage. Pairing stays on BLE. APDUs in `firmware/esp32/lib/limen/nfc_telefono.h`.
+Permissions: `NFC`, `VIBRATE`; NFC is optional (`android.hardware.nfc.hce` not required).
 
 ## Phone credential (`esp32s3_blecred`)
 

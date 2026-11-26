@@ -160,6 +160,24 @@ bool Slave::verificaProvaBle(const uint8_t* sfida, const uint8_t* nonceTel, cons
   return false;
 }
 
+void Slave::esitoDesfire(const std::string& esito, const std::string& uid, const std::string& motivo) {
+  if (!finestraDesfireAperta()) return;
+  std::string m = motivo;
+  for (char& c : m) if (c == '|' || c == '\n') c = ' ';
+  drCampi_ = {sessioneDesfire_, esito, uid, m};
+  sessioneDesfire_.clear(); finestraDesfireFinoA_ = 0;  // una tessera per finestra
+  drTentativi_ = 0;
+  hal_.log(0, "DESFire card: " + esito + (uid.empty() ? "" : " (UID " + uid + ")") + (m.empty() ? "" : ": " + m));
+  mandaEsitoDesfire();
+}
+
+void Slave::mandaEsitoDesfire() {
+  if (drCampi_.size() != 4 || chiave_.empty() || masterIp_.empty()) return;
+  drInviatoAlle_ = hal_.millis();
+  drTentativi_++;
+  mandaFirmato({"DR", std::to_string(id_), std::to_string(ora()), drCampi_[0], drCampi_[1], drCampi_[2], drCampi_[3]});
+}
+
 void Slave::mandaAbbinamentoBle() {
   abInviatoAlle_ = hal_.millis();
   abTentativi_++;
@@ -384,6 +402,22 @@ void Slave::gestisciPiccolo(const std::string& testo) {
         esitoAbBle_ = "no";
       }
       chiudiFinestraBle();                                 // l'invito vale una volta sola, comunque sia andata
+    }
+  } else if (tipo == "DW" || tipo == "DC") {
+    // DW|id|ts|sessione|secondi: finestra di scrittura DESFire; secondi 0 = chiudi (anche: esito ricevuto dal master).
+    // DC|id|ts|sessione|secondi|modo: come DW ma la tessera si riconosce (modo i) o si pulisce (modo c).
+    int64_t sec = 0;
+    char modo = tipo == "DW" ? 'w' : (campi.size() >= 3 && campi[2] == "c") ? 'c' : (campi.size() >= 3 && campi[2] == "i") ? 'i' : 0;
+    if (campi.size() >= 2 && parseInt(campi[1], sec) && sec > 0 && sec <= 120 && !chiaveTelefoni_.empty() && modo) {
+      sessioneDesfire_ = campi[0];
+      modoDesfire_ = modo;
+      finestraDesfireFinoA_ = hal_.millis() + uint64_t(sec) * 1000;
+      drTentativi_ = 0; drCampi_.clear();
+      hal_.log(0, std::string("DESFire ") + (modo == 'w' ? "writing" : modo == 'c' ? "clearing" : "identify") + " window open for " + std::to_string(sec) + " s");
+    } else {
+      if (!campi.empty() && !drCampi_.empty() && drCampi_[0] == campi[0]) { drTentativi_ = 0; drCampi_.clear(); }
+      if (campi.empty() || campi[0] == sessioneDesfire_) { sessioneDesfire_.clear(); finestraDesfireFinoA_ = 0; }
+      if (chiaveTelefoni_.empty()) hal_.log(1, "DESFire writing refused: no site key yet (send the data to the device first)");
     }
   } else if (tipo == "AE") {
     int64_t seq;
@@ -782,6 +816,7 @@ void Slave::loop() {
   if (now - ultimoTick_ >= 1000) { ultimoTick_ = now; tickUscite(); }
   // Richiesta di abbinamento senza risposta: un pacchetto UDP puo' perdersi, si ripete (il master risponde uguale).
   if (abTentativi_ > 0 && abTentativi_ < 3 && esitoAbBle_.empty() && finestraBleAperta() && now - abInviatoAlle_ >= 1500) mandaAbbinamentoBle();
+  if (drTentativi_ > 0 && drTentativi_ < 3 && now - drInviatoAlle_ >= 1500) mandaEsitoDesfire();
   if (primoBattito_ || now - ultimoBattito_ >= uint64_t(intervalloBattitoMs_)) {
     primoBattito_ = false; ultimoBattito_ = now;
     mandaBattito();

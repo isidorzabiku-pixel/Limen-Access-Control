@@ -88,11 +88,10 @@ installer pronto è in programma.
 ## Slave (i dispositivi alla porta)
 
 - **Firmware ESP32** — [`firmware/esp32/`](firmware/esp32/README.md) (in inglese). Nucleo C++ senza dipendenze da Arduino
-  (decisione, cache, protocollo, HMAC-SHA256) più il livello per la piattaforma ESP32. Console di prova nella pagina web
-  del dispositivo finché non è collegato un lettore. Due varianti hardware condividono lo stesso nucleo: una scheda con
-  lettore RS-485 e un lettore PoE tutto-in-uno. L'interfaccia del dispositivo è solo in inglese.
-- **Agent Python (versione di prova)** — [`agent/`](agent/INSTALL_PI.md). Un'implementazione per Raspberry Pi usata per
-  provare il protocollo e il cablaggio dei GPIO. **Non è mantenuta** e non è lo slave supportato.
+  (decisione, cache, protocollo, HMAC-SHA256) più il livello per la piattaforma ESP32. Legge badge MIFARE, tessere DESFire e
+  telefoni (BLE e NFC) con un PN532 e comanda un relè a contatto pulito e due LED. **Prototipo di lettore tutto-in-uno**
+  (ESP32-S3 + PN532 + relè + alimentazione 12 V, provato al banco): vedi il README del firmware. È prevista una testa
+  lettore RS-485 per un controller separato. L'interfaccia del dispositivo è solo in inglese.
 
 ## Note di sicurezza
 

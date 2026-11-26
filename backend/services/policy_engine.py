@@ -7,7 +7,7 @@ fascia oraria e' valida in un dato momento (festivita' comprese), quale esito
 ne verrebbe su un varco.
 
 NB: la decisione vera ad ogni lettura badge la prende lo slave in locale, con
-la cache che riceve (vedi agent/services/udp_client.py); il master applica le
+la cache che riceve (vedi firmware/esp32/lib/limen/slave.cpp); il master applica le
 stesse regole per costruire quella cache, per spiegare un esito ("perche' e'
 stato negato?"), per mostrare i permessi effettivi di una persona e per tenere
 l'anti-passback.

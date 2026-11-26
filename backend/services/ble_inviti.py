@@ -25,45 +25,13 @@ motivo_ultimo = ""             # perche' l'ultima richiesta e' stata respinta (p
 # ---------- Chiave dei telefoni dell'impianto ----------
 
 def chiave_telefoni(db) -> bytes:
-    """La chiave nasce da sola al primo uso e resta nel database (quindi nel backup)."""
-    riga = db.get(Impostazione, CHIAVE_IMPOSTAZIONE)
-    if riga is not None:
-        try:
-            k = bytes.fromhex(riga.valore)
-            if len(k) == 32:
-                return k
-        except ValueError:
-            pass
-    k = ba.nuova_chiave_telefoni()
-    if riga is None:
-        db.add(Impostazione(chiave=CHIAVE_IMPOSTAZIONE, valore=k.hex()))
-    else:
-        riga.valore = k.hex()
-    db.commit()
-    return k
+    """La chiave d'impianto (services/chiavi_impianto.py): nasce da sola al primo uso e sta nel file chiavi del backup."""
+    from services import chiavi_impianto
+    return chiavi_impianto.chiave(db)
 
 
 def conta_telefoni(db) -> int:
     return db.query(AccessMedia).filter(AccessMedia.tipo == TipoMedia.ble).count()
-
-
-def rigenera_chiave_telefoni(db) -> int:
-    """Chiave nuova (per esempio dopo il furto di un dispositivo): i segreti dei telefoni derivano dalla vecchia,
-    quindi tutti i titoli dei telefoni si eliminano e i telefoni vanno abbinati di nuovo. Ritorna quanti erano.
-    Chi chiama manda poi la cache."""
-    telefoni = db.query(AccessMedia).filter(AccessMedia.tipo == TipoMedia.ble).all()
-    for m in telefoni:
-        db.delete(m)
-    for inv in db.query(InvitoBle).all():
-        db.delete(inv)
-    riga = db.get(Impostazione, CHIAVE_IMPOSTAZIONE)
-    nuova = ba.nuova_chiave_telefoni().hex()
-    if riga is None:
-        db.add(Impostazione(chiave=CHIAVE_IMPOSTAZIONE, valore=nuova))
-    else:
-        riga.valore = nuova
-    db.commit()
-    return len(telefoni)
 
 
 # ---------- Inviti ----------

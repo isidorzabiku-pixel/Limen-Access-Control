@@ -35,10 +35,17 @@ on any machine you already have.
   an explained reason for every denied access, system health, backup and a detailed diagnostic log.
 - **Per-gate behaviour.** Readers, outputs (door strike, siren, alarm arming) and inputs (door sensor, button, remote) are
   configured from the web app; modes: normal, scheduled unlock, maintenance, emergency.
-- **Phone as a credential.** An Android app opens a gate over Bluetooth LE: the phone answers a fresh
-  challenge with a per-phone secret (HMAC-SHA256), the gate decides locally like for any badge, and an unpaired phone gets
-  nothing but a silent "no". Pairing uses a single-use invite from the web app. Tested on several Android phones. Needs the `esp32s3_blecred` firmware; the
-  phone key is not yet encrypted in the ESP32 flash or in backups. See [`app-android/`](app-android/README.md).
+- **Phone as a credential.** An Android app opens a gate over Bluetooth LE or by tapping the phone on the NFC reader:
+  the phone answers a fresh challenge with a per-phone secret (HMAC-SHA256), the gate decides locally like for any
+  badge, and an unpaired phone gets nothing but a silent "no". Pairing uses a single-use invite from the web app.
+  Tested on several Android phones. BLE needs the `esp32s3_blecred` firmware. See [`app-android/`](app-android/README.md).
+- **MIFARE DESFire cards with AES.** The web app writes blank DESFire EV1/EV2/EV3 cards through any reader («Write
+  DESFire card»); every card gets its own AES key derived from the site key and its UID (NXP AN10922), the reader checks
+  it with mutual authentication, so a copied card or a fake UID does not open. Cards are found by the number printed on
+  them. Plain MIFARE badges keep working by UID.
+- **One site key, backup in two files.** Phones and DESFire cards hang on a single site key; the backup is a data file
+  without secrets plus a separate key file, and restoring both brings every phone and card back. The key is not yet
+  encrypted in the ESP32 flash.
 - **Public REST API** with token authentication, and PDF documentation (see `api/`).
 - **HTTPS everywhere** (self-signed certificate generated on first start, or bring your own).
 - **Italian and English** web interface; each user picks their own language.
@@ -85,11 +92,10 @@ certificates and the session key live in the `limen-data` volume and survive upd
 ## Slaves (devices at the door)
 
 - **ESP32 firmware** — [`firmware/esp32/`](firmware/esp32/README.md). C++ core with no Arduino dependency (decision, cache,
-  protocol, HMAC-SHA256) plus the ESP32 platform layer. Test console on the device web page while no reader driver is
-  attached. Two hardware variants share one core: a board with an RS-485 reader, and an all-in-one PoE reader. The device
-  interface is English-only.
-- **Python agent (test version)** — [`agent/`](agent/INSTALL_PI.md). A Raspberry Pi implementation used to try the protocol and
-  GPIO wiring. It is **not maintained** and not the supported slave.
+  protocol, HMAC-SHA256) plus the ESP32 platform layer. It reads MIFARE badges, DESFire cards and phones (BLE and NFC)
+  through a PN532 and drives a dry-contact relay and two LEDs. **All-in-one reader prototype** (ESP32-S3 + PN532 + relay
+  + 12 V supply, bench-tested): see the firmware README. An RS-485 reader head for a separate controller is planned. The
+  device interface is English-only.
 
 ## Security notes
 

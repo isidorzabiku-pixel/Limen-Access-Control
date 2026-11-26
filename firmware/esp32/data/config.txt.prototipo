@@ -1,0 +1,24 @@
+# Settings for the all-in-one reader prototype (Freenove ESP32-S3 + PN532 + relay + 2 LEDs, bench of 26/11).
+# Copy to "config.txt" (same folder), fill in the three YOUR_... values and upload with
+# `pio run -e esp32s3 -t uploadfs`. On restart the device reads it, saves the settings and deletes it.
+# Warning: uploading the filesystem image erases the whole data flash: press "Pair" in the master afterwards.
+
+id = 1
+wifi_name = YOUR_NETWORK_NAME
+wifi_password = YOUR_WIFI_PASSWORD
+ip = 192.168.1.90
+gateway = 192.168.1.1
+subnet = 255.255.255.0
+
+# empty = the device page is open to the whole network (accepted for the bench)
+admin_password = YOUR_ADMIN_PASSWORD
+
+# pins of the prototype (-1 = not connected)
+# relay: board with trigger jumper on H = active high; contact is dry (COM/NO only)
+relay1 = 21
+relay2 = -1
+relay1_active_high = yes
+input1 = -1
+input2 = -1
+led_green = 1
+led_red = 2
